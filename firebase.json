@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "web/public",
+    "public": "web",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -8,8 +8,15 @@
     ],
     "rewrites": [
       {
-        "source": "**",
-        "destination": "/index.html"
+        "source": "/api/waitlist",
+        "function": {
+          "functionId": "api",
+          "region": "asia-south1"
+        }
+      },
+      {
+        "source": "/",
+        "destination": "/Evelve/index.html"
       }
     ]
   }
