@@ -1,0 +1,557 @@
+{
+  "version": "sc-discovery-1",
+  "areas": {
+    "R": {
+      "code": "R",
+      "name": "Realistic",
+      "short": "Hands-on",
+      "color": "green",
+      "icon": "tool",
+      "persona": "The hands-on maker",
+      "description": "You seem drawn to doing, making and working with real things. A small practical experiment could be a satisfying place to start.",
+      "directions": [
+        "Hands-on prototyping",
+        "Outdoor field projects",
+        "Making and repair"
+      ],
+      "mission": "Make a phone stand from spare cardboard. Try one improvement after using it."
+    },
+    "I": {
+      "code": "I",
+      "name": "Investigative",
+      "short": "Curious",
+      "color": "blue",
+      "icon": "compass",
+      "persona": "The curious investigator",
+      "description": "You seem interested in asking why, following clues and understanding how things work. Give yourself a question worth digging into.",
+      "directions": [
+        "Research and experiments",
+        "Data exploration",
+        "Cybersecurity puzzles"
+      ],
+      "mission": "Pick an everyday claim. Find two credible sources and write what you still need to know."
+    },
+    "A": {
+      "code": "A",
+      "name": "Artistic",
+      "short": "Creative",
+      "color": "purple",
+      "icon": "pen",
+      "persona": "The creative explorer",
+      "description": "You seem drawn to original ideas, expression and making things feel different. A blank page might be an invitation, not an obstacle.",
+      "directions": [
+        "Visual design",
+        "Photography and travel stories",
+        "Creative writing"
+      ],
+      "mission": "Redesign one campus poster in 20 minutes. Try a totally different mood, just for fun."
+    },
+    "S": {
+      "code": "S",
+      "name": "Social",
+      "short": "People-first",
+      "color": "pink",
+      "icon": "people",
+      "persona": "The people connector",
+      "description": "You seem interested in helping people learn, feel included and find their way. Try a small moment of useful human connection.",
+      "directions": [
+        "Peer mentoring",
+        "Learning communities",
+        "Workshop facilitation"
+      ],
+      "mission": "Teach a friend one small thing you enjoy. Ask them to teach you something back."
+    },
+    "E": {
+      "code": "E",
+      "name": "Enterprising",
+      "short": "Taking the lead",
+      "color": "yellow",
+      "icon": "mic",
+      "persona": "The bold initiator",
+      "description": "You seem drawn to starting things, sharing ideas and getting people on board. A tiny initiative is enough to test that interest.",
+      "directions": [
+        "Public speaking",
+        "Student leadership",
+        "Entrepreneurship experiments"
+      ],
+      "mission": "Record a one-minute pitch for an idea you care about. Share it with one trusted friend."
+    },
+    "C": {
+      "code": "C",
+      "name": "Conventional",
+      "short": "Organized",
+      "color": "cream",
+      "icon": "check",
+      "persona": "The thoughtful organizer",
+      "description": "You seem interested in clear plans, accurate details and turning a mess into something usable. Small systems can make a big difference.",
+      "directions": [
+        "Project coordination",
+        "Information organization",
+        "Event operations"
+      ],
+      "mission": "Turn one messy set of notes or shared files into a simple system someone else can use."
+    }
+  },
+  "pairs": {
+    "RI": {
+      "code": "RI",
+      "title": "The curious maker",
+      "description": "You seem interested in both understanding how things work and trying them with your own hands.",
+      "directions": [
+        "Hardware experiments",
+        "Making and testing prototypes"
+      ]
+    },
+    "RA": {
+      "code": "RA",
+      "title": "The creative maker",
+      "description": "Your mix brings practical making together with original expression. You might enjoy an idea you can actually hold.",
+      "directions": [
+        "Product-design models",
+        "Craft and installation projects"
+      ]
+    },
+    "RS": {
+      "code": "RS",
+      "title": "The hands-on helper",
+      "description": "You seem drawn to practical activity with a human purpose: making something useful for someone else.",
+      "directions": [
+        "Community build projects",
+        "Accessible campus improvements"
+      ]
+    },
+    "RE": {
+      "code": "RE",
+      "title": "The practical starter",
+      "description": "You seem interested in turning a real-world idea into action and getting others moving with you.",
+      "directions": [
+        "Campus pop-up experiments",
+        "Event production"
+      ]
+    },
+    "RC": {
+      "code": "RC",
+      "title": "The systems builder",
+      "description": "You seem to enjoy practical tasks with clear steps, working parts and details that line up.",
+      "directions": [
+        "Testing and quality checklists",
+        "Workshop coordination"
+      ]
+    },
+    "IA": {
+      "code": "IA",
+      "title": "The design detective",
+      "description": "You seem drawn to understanding a problem and imagining a fresh way to express or solve it.",
+      "directions": [
+        "UX research and design",
+        "Data storytelling"
+      ]
+    },
+    "IS": {
+      "code": "IS",
+      "title": "The insightful guide",
+      "description": "Your curiosity about how things work meets an interest in helping people understand them.",
+      "directions": [
+        "Science communication",
+        "Peer-learning experiments"
+      ]
+    },
+    "IE": {
+      "code": "IE",
+      "title": "The curious strategist",
+      "description": "You seem interested in investigating possibilities, then making a case for an idea worth trying.",
+      "directions": [
+        "Product discovery",
+        "Student venture research"
+      ]
+    },
+    "IC": {
+      "code": "IC",
+      "title": "The pattern finder",
+      "description": "You seem drawn to investigating clues and keeping track of the details. You might enjoy making a complex puzzle clearer.",
+      "directions": [
+        "Data analysis",
+        "Beginner cybersecurity puzzles"
+      ]
+    },
+    "AS": {
+      "code": "AS",
+      "title": "The creative connector",
+      "description": "You seem to enjoy expression with a human connection: stories, experiences and ideas that bring people closer.",
+      "directions": [
+        "Visual storytelling",
+        "Creative workshop facilitation"
+      ]
+    },
+    "AE": {
+      "code": "AE",
+      "title": "The idea amplifier",
+      "description": "You seem drawn to original ideas and the energy of putting them out into the world.",
+      "directions": [
+        "Creative entrepreneurship",
+        "Public speaking and storytelling"
+      ]
+    },
+    "AC": {
+      "code": "AC",
+      "title": "The detail-loving designer",
+      "description": "You seem interested in creativity that also makes information clear, considered and easy to navigate.",
+      "directions": [
+        "Information design",
+        "Content and design systems"
+      ]
+    },
+    "SE": {
+      "code": "SE",
+      "title": "The community catalyst",
+      "description": "You seem drawn to people and to making things happen together. Your next experiment could start with a conversation.",
+      "directions": [
+        "Community organising",
+        "Student leadership and speaking"
+      ]
+    },
+    "SC": {
+      "code": "SC",
+      "title": "The people-first planner",
+      "description": "You seem interested in supporting people through thoughtful plans and dependable details.",
+      "directions": [
+        "Learning-session coordination",
+        "Student support projects"
+      ]
+    },
+    "EC": {
+      "code": "EC",
+      "title": "The project driver",
+      "description": "You seem drawn to taking initiative and creating a clear plan that helps a team follow through.",
+      "directions": [
+        "Project coordination",
+        "Campus event operations"
+      ]
+    }
+  },
+  "anchors": [
+    {
+      "value": 0,
+      "label": "Not for me",
+      "detail": "I would pass",
+      "face": "pass",
+      "color": "pink"
+    },
+    {
+      "value": 1,
+      "label": "Maybe",
+      "detail": "Open to trying",
+      "face": "maybe",
+      "color": "paper"
+    },
+    {
+      "value": 2,
+      "label": "I’d love it",
+      "detail": "Count me in",
+      "face": "love",
+      "color": "green"
+    }
+  ],
+  "questions": [
+    {
+      "id": "R1",
+      "area": "R",
+      "title": "Build a useful thing from spare materials.",
+      "cue": "Picture a phone stand or a small shelf you could actually use.",
+      "icon": "tool",
+      "scene": "A FREE AFTERNOON",
+      "sortOrder": 0,
+      "active": true
+    },
+    {
+      "id": "R2",
+      "area": "R",
+      "title": "Repair a wobbly chair or a loose handle.",
+      "cue": "You have basic tools and someone to show you the safe steps.",
+      "icon": "tool",
+      "scene": "AROUND CAMPUS",
+      "sortOrder": 1,
+      "active": true
+    },
+    {
+      "id": "R3",
+      "area": "R",
+      "title": "Grow and look after a small garden.",
+      "cue": "Imagine planting, watering and seeing something change over time.",
+      "icon": "pin",
+      "scene": "OUT IN THE OPEN",
+      "sortOrder": 2,
+      "active": true
+    },
+    {
+      "id": "R4",
+      "area": "R",
+      "title": "Put together a small working model.",
+      "cue": "You get parts and a simple guide. Think about the making, not the marks.",
+      "icon": "code",
+      "scene": "THE MAKER TABLE",
+      "sortOrder": 3,
+      "active": true
+    },
+    {
+      "id": "R5",
+      "area": "R",
+      "title": "Set up equipment for a campus event.",
+      "cue": "Imagine connecting the speakers and arranging the practical setup.",
+      "icon": "mic",
+      "scene": "BEHIND THE SCENES",
+      "sortOrder": 4,
+      "active": true
+    },
+    {
+      "id": "I1",
+      "area": "I",
+      "title": "Follow clues to solve a mystery.",
+      "cue": "Think patterns and possible explanations, with no timer running.",
+      "icon": "compass",
+      "scene": "A LITTLE MYSTERY",
+      "sortOrder": 5,
+      "active": true
+    },
+    {
+      "id": "I2",
+      "area": "I",
+      "title": "Investigate why an app keeps crashing.",
+      "cue": "Imagine tracing the cause. You do not need to know how yet.",
+      "icon": "code",
+      "scene": "SOMETHING IS OFF",
+      "sortOrder": 6,
+      "active": true
+    },
+    {
+      "id": "I3",
+      "area": "I",
+      "title": "Test an idea with a small experiment.",
+      "cue": "Change one thing, see what happens, then ask why.",
+      "icon": "compass",
+      "scene": "WHAT WOULD HAPPEN?",
+      "sortOrder": 7,
+      "active": true
+    },
+    {
+      "id": "I4",
+      "area": "I",
+      "title": "Find a pattern in a bunch of numbers.",
+      "cue": "Picture looking at campus survey results and noticing something interesting.",
+      "icon": "check",
+      "scene": "CONNECT THE DOTS",
+      "sortOrder": 8,
+      "active": true
+    },
+    {
+      "id": "I5",
+      "area": "I",
+      "title": "Research a question just because you wonder.",
+      "cue": "No assignment. Just a question you would enjoy finding an answer to.",
+      "icon": "compass",
+      "scene": "DOWN A RABBIT HOLE",
+      "sortOrder": 9,
+      "active": true
+    },
+    {
+      "id": "A1",
+      "area": "A",
+      "title": "Give a college club a fresh visual style.",
+      "cue": "Imagine playing with a logo, colours and a poster.",
+      "icon": "pen",
+      "scene": "A BLANK CANVAS",
+      "sortOrder": 10,
+      "active": true
+    },
+    {
+      "id": "A2",
+      "area": "A",
+      "title": "Tell a story through photos or a short film.",
+      "cue": "Picture turning an ordinary day into something worth watching.",
+      "icon": "camera",
+      "scene": "YOUR POINT OF VIEW",
+      "sortOrder": 11,
+      "active": true
+    },
+    {
+      "id": "A3",
+      "area": "A",
+      "title": "Write a scene, poem or short story.",
+      "cue": "Make up a little world. Spelling and polish can wait.",
+      "icon": "pen",
+      "scene": "NO RULED LINES",
+      "sortOrder": 12,
+      "active": true
+    },
+    {
+      "id": "A4",
+      "area": "A",
+      "title": "Create a tune or experiment with sounds.",
+      "cue": "No training needed to imagine enjoying the creative process.",
+      "icon": "mic",
+      "scene": "MAKE SOME NOISE",
+      "sortOrder": 13,
+      "active": true
+    },
+    {
+      "id": "A5",
+      "area": "A",
+      "title": "Sketch a new look for a familiar space.",
+      "cue": "Picture changing the colours and feel of your favourite campus corner.",
+      "icon": "pen",
+      "scene": "A DIFFERENT ANGLE",
+      "sortOrder": 14,
+      "active": true
+    },
+    {
+      "id": "S1",
+      "area": "S",
+      "title": "Help a classmate understand something tricky.",
+      "cue": "Imagine finding a simpler way to explain it, without doing their work.",
+      "icon": "people",
+      "scene": "A FRIEND ASKS",
+      "sortOrder": 15,
+      "active": true
+    },
+    {
+      "id": "S2",
+      "area": "S",
+      "title": "Make a newcomer feel included.",
+      "cue": "Picture helping someone find their feet in a new group.",
+      "icon": "chat",
+      "scene": "FIRST DAY ENERGY",
+      "sortOrder": 16,
+      "active": true
+    },
+    {
+      "id": "S3",
+      "area": "S",
+      "title": "Listen while a friend talks something through.",
+      "cue": "You do not have to solve it. Just give them your attention.",
+      "icon": "heart",
+      "scene": "A REAL CONVERSATION",
+      "sortOrder": 17,
+      "active": true
+    },
+    {
+      "id": "S4",
+      "area": "S",
+      "title": "Volunteer at a community learning session.",
+      "cue": "Imagine helping people practise a skill, one small step at a time.",
+      "icon": "people",
+      "scene": "LEARN TOGETHER",
+      "sortOrder": 18,
+      "active": true
+    },
+    {
+      "id": "S5",
+      "area": "S",
+      "title": "Guide someone through their first attempt.",
+      "cue": "Picture being patient while they learn something you can show them.",
+      "icon": "chat",
+      "scene": "A SMALL BIT OF HELP",
+      "sortOrder": 19,
+      "active": true
+    },
+    {
+      "id": "E1",
+      "area": "E",
+      "title": "Pitch an idea to a room of people.",
+      "cue": "Nerves are allowed. Would you enjoy getting your idea across?",
+      "icon": "mic",
+      "scene": "YOUR TURN TO SPEAK",
+      "sortOrder": 20,
+      "active": true
+    },
+    {
+      "id": "E2",
+      "area": "E",
+      "title": "Bring a team together for a new project.",
+      "cue": "Imagine getting people excited enough to give it a go.",
+      "icon": "people",
+      "scene": "LET US START SOMETHING",
+      "sortOrder": 21,
+      "active": true
+    },
+    {
+      "id": "E3",
+      "area": "E",
+      "title": "Persuade a sponsor to support a club idea.",
+      "cue": "Picture explaining why your idea is worth backing.",
+      "icon": "chat",
+      "scene": "MAKE YOUR CASE",
+      "sortOrder": 22,
+      "active": true
+    },
+    {
+      "id": "E4",
+      "area": "E",
+      "title": "Try selling something you created.",
+      "cue": "Imagine sharing its value and finding your first interested customer.",
+      "icon": "bag",
+      "scene": "YOUR FIRST LITTLE VENTURE",
+      "sortOrder": 23,
+      "active": true
+    },
+    {
+      "id": "E5",
+      "area": "E",
+      "title": "Lead a group toward a shared decision.",
+      "cue": "You listen to opinions, then help everyone move forward.",
+      "icon": "mic",
+      "scene": "TIME TO TAKE THE LEAD",
+      "sortOrder": 24,
+      "active": true
+    },
+    {
+      "id": "C1",
+      "area": "C",
+      "title": "Turn scattered plans into a clear checklist.",
+      "cue": "Picture everyone knowing what needs to happen next.",
+      "icon": "check",
+      "scene": "A LITTLE MORE ORDER",
+      "sortOrder": 25,
+      "active": true
+    },
+    {
+      "id": "C2",
+      "area": "C",
+      "title": "Organise shared files so things are easy to find.",
+      "cue": "Imagine clear folders and names, instead of final-final-v7.",
+      "icon": "code",
+      "scene": "SORT THE CHAOS",
+      "sortOrder": 26,
+      "active": true
+    },
+    {
+      "id": "C3",
+      "area": "C",
+      "title": "Keep track of a club budget.",
+      "cue": "Think recording what came in, what went out and what is left.",
+      "icon": "check",
+      "scene": "MAKE IT ADD UP",
+      "sortOrder": 27,
+      "active": true
+    },
+    {
+      "id": "C4",
+      "area": "C",
+      "title": "Check a list for missing or incorrect details.",
+      "cue": "Imagine catching a small mistake before it causes confusion.",
+      "icon": "compass",
+      "scene": "EYE FOR THE DETAILS",
+      "sortOrder": 28,
+      "active": true
+    },
+    {
+      "id": "C5",
+      "area": "C",
+      "title": "Plan a schedule with all the pieces in place.",
+      "cue": "Picture times, tasks and people fitting into a workable plan.",
+      "icon": "check",
+      "scene": "IT ALL FITS",
+      "sortOrder": 29,
+      "active": true
+    }
+  ]
+}

@@ -67,3 +67,11 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Build outputs
+web/dist/
+admin/dist/
+
+# OS
+.DS_Store
+graphify-out/
