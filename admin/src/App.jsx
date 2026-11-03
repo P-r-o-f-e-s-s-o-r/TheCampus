@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react'
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-} from 'firebase/auth'
-import { auth } from './firebase'
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
+import { ADMIN_EMAIL, auth, googleProvider } from './firebase'
 import {
   createQuestion,
   deleteQuestion,
@@ -28,9 +24,7 @@ const EMPTY_QUESTION = {
 }
 
 export default function App() {
-  const [user, setUser] = useState(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [user, setUser] = useState(undefined)
   const [tab, setTab] = useState('waitlist')
   const [waitlist, setWaitlist] = useState([])
   const [pack, setPack] = useState(null)
@@ -40,7 +34,24 @@ export default function App() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => onAuthStateChanged(auth, setUser), [])
+  useEffect(
+    () =>
+      onAuthStateChanged(auth, async (next) => {
+        if (!next) {
+          setUser(null)
+          return
+        }
+        const email = (next.email || '').toLowerCase()
+        if (email !== ADMIN_EMAIL) {
+          await signOut(auth)
+          setUser(null)
+          setError(`Only ${ADMIN_EMAIL} can access admin.`)
+          return
+        }
+        setUser(next)
+      }),
+    []
+  )
 
   useEffect(() => {
     if (!user) return
@@ -62,13 +73,22 @@ export default function App() {
     }
   }
 
-  async function onLogin(e) {
-    e.preventDefault()
+  async function onGoogleSignIn() {
     setError('')
+    setBusy(true)
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const result = await signInWithPopup(auth, googleProvider)
+      const email = (result.user.email || '').toLowerCase()
+      if (email !== ADMIN_EMAIL) {
+        await signOut(auth)
+        setError(`Only ${ADMIN_EMAIL} can access admin.`)
+      }
     } catch (err) {
-      setError(err.message)
+      if (err.code !== 'auth/popup-closed-by-user') {
+        setError(err.message)
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -142,27 +162,31 @@ export default function App() {
     }
   }
 
+  if (user === undefined) {
+    return (
+      <div className="admin">
+        <h1>SapiensCampus Admin</h1>
+        <p className="muted">Checking session…</p>
+      </div>
+    )
+  }
+
   if (!user) {
     return (
       <div className="admin">
         <h1>SapiensCampus Admin</h1>
-        <form className="card" onSubmit={onLogin}>
-          <label>
-            Email
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
-          </label>
-          <label>
-            Password
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              required
-            />
-          </label>
-          <button type="submit">Sign in</button>
+        <div className="card login">
+          <p className="muted">Sign in with the allowlisted Google account.</p>
+          <button
+            type="button"
+            className="google"
+            disabled={busy}
+            onClick={onGoogleSignIn}
+          >
+            {busy ? 'Opening Google…' : 'Continue with Google'}
+          </button>
           {error && <p className="error">{error}</p>}
-        </form>
+        </div>
       </div>
     )
   }

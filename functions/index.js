@@ -26,6 +26,8 @@ const QUESTIONS = db.collection("questions");
 const QUIZ_META = db.collection("quizMeta").doc("config");
 const WAITLIST = db.collection("waitlist");
 const ADMINS = db.collection("admins");
+/** Always-allowed admin Google accounts (in addition to Firestore `admins`). */
+const BOOTSTRAP_ADMIN_EMAILS = new Set(["sapienscampus.in@gmail.com"]);
 
 function isEmail(value) {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -81,8 +83,9 @@ async function requireAdmin(req, res, next) {
     if (!email) {
       return res.status(403).json({ ok: false, error: "Admin email required" });
     }
-    const adminDoc = await ADMINS.doc(email).get();
-    if (!adminDoc.exists) {
+    const allowlisted =
+      BOOTSTRAP_ADMIN_EMAILS.has(email) || (await ADMINS.doc(email).get()).exists;
+    if (!allowlisted) {
       return res.status(403).json({ ok: false, error: "Not an admin" });
     }
     req.admin = { uid: decoded.uid, email };
@@ -122,7 +125,7 @@ async function seedFromTemplateIfEmpty() {
     });
   });
 
-  const adminEmail = "sapienscampus@gmail.com";
+  const adminEmail = "sapienscampus.in@gmail.com";
   batch.set(ADMINS.doc(adminEmail), {
     email: adminEmail,
     role: "admin",

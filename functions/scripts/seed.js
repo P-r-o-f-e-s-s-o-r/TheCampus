@@ -70,16 +70,23 @@ async function main() {
     });
   });
 
-  const adminEmail = (process.env.ADMIN_EMAIL || "sapienscampus@gmail.com").toLowerCase();
+  const adminEmail = (process.env.ADMIN_EMAIL || "sapienscampus.in@gmail.com").toLowerCase();
   batch.set(db.collection("admins").doc(adminEmail), {
     email: adminEmail,
     role: "admin",
     createdAt: FieldValue.serverTimestamp(),
   });
 
+  // Drop legacy allowlist entry when rotating the primary admin.
+  const legacyAdmin = "sapienscampus@gmail.com";
+  if (adminEmail !== legacyAdmin) {
+    batch.delete(db.collection("admins").doc(legacyAdmin));
+  }
+
   await batch.commit();
   console.log(`Seeded ${pack.questions.length} questions and admin doc ${adminEmail}`);
 
+  // Google Sign-In creates the Auth user on first login; password is optional.
   await ensureAdminUser(adminEmail, process.env.ADMIN_PASSWORD || null);
 }
 
