@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "sapienscampus-97b6a"
-  }
+  },
+  "targets": {
+    "sapienscampus-97b6a": {
+      "hosting": {
+        "web": [
+          "sapienscampus-97b6a"
+        ],
+        "admin": [
+          "sapienscampus-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

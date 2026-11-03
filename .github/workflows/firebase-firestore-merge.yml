@@ -1,0 +1,20 @@
+name: Deploy Firestore on merge
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-firestore:
+    name: Firestore rules + indexes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy firestore
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_SAPIENSCAMPUS_97B6A }}
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
+          npx -y firebase-tools@latest deploy --only firestore --project sapienscampus-97b6a --non-interactive
