@@ -70,7 +70,7 @@ async function main() {
     });
   });
 
-  const adminEmail = (process.env.ADMIN_EMAIL || "sapienscampus.in@gmail.com").toLowerCase();
+  const adminEmail = (process.env.ADMIN_EMAIL || "sapienscampus@gmail.com").toLowerCase();
   batch.set(db.collection("admins").doc(adminEmail), {
     email: adminEmail,
     role: "admin",

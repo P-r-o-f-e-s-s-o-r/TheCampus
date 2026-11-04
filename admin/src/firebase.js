@@ -11,7 +11,7 @@ const firebaseConfig = {
   measurementId: 'G-W6RB06V7GZ',
 }
 
-export const ADMIN_EMAIL = 'sapienscampus.in@gmail.com'
+export const ADMIN_EMAIL = 'sapienscampus@gmail.com'
 
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)

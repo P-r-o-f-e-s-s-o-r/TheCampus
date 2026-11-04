@@ -27,7 +27,7 @@ const QUIZ_META = db.collection("quizMeta").doc("config");
 const WAITLIST = db.collection("waitlist");
 const ADMINS = db.collection("admins");
 /** Always-allowed admin Google accounts (in addition to Firestore `admins`). */
-const BOOTSTRAP_ADMIN_EMAILS = new Set(["sapienscampus.in@gmail.com"]);
+const BOOTSTRAP_ADMIN_EMAILS = new Set(["sapienscampus@gmail.com"]);
 
 function isEmail(value) {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -125,7 +125,7 @@ async function seedFromTemplateIfEmpty() {
     });
   });
 
-  const adminEmail = "sapienscampus.in@gmail.com";
+  const adminEmail = "sapienscampus@gmail.com";
   batch.set(ADMINS.doc(adminEmail), {
     email: adminEmail,
     role: "admin",

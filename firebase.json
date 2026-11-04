@@ -69,7 +69,7 @@
       "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "SapiensCampus",
-        "supportEmail": "sapienscampus.in@gmail.com",
+        "supportEmail": "sapienscampus@gmail.com",
         "authorizedRedirectUris": [
           "https://sapienscampus-97b6a.firebaseapp.com/__/auth/handler",
           "http://localhost"
