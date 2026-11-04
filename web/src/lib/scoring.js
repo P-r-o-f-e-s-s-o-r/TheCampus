@@ -1,18 +1,37 @@
+export const RIASEC_KEYS = ['R', 'I', 'A', 'S', 'E', 'C']
+export const QUESTIONS_PER_AREA = 5
+export const QUIZ_LENGTH = RIASEC_KEYS.length * QUESTIONS_PER_AREA
+
+/**
+ * Always return exactly 30 questions: 5 per RIASEC area.
+ * If an area has more than 5, randomly sample 5.
+ * Final list is shuffled so students see a random order.
+ */
+export function selectQuizQuestions(questions, rng = Math.random) {
+  const list = Array.isArray(questions) ? questions : []
+  const selected = []
+
+  for (const key of RIASEC_KEYS) {
+    const pool = list.filter((q) => q.area === key)
+    if (pool.length < QUESTIONS_PER_AREA) {
+      throw new Error(
+        `Need at least ${QUESTIONS_PER_AREA} active questions for ${key} (found ${pool.length}).`
+      )
+    }
+    selected.push(...shuffle(pool, rng).slice(0, QUESTIONS_PER_AREA))
+  }
+
+  return shuffle(selected, rng)
+}
+
+/** @deprecated prefer selectQuizQuestions — kept for callers that want IDs only */
 export function createOrder(questions, rng = Math.random) {
-  const keys = [...new Set(questions.map((q) => q.area))]
-  const pools = Object.fromEntries(
-    keys.map((k) => [k, shuffle(questions.filter((q) => q.area === k).map((q) => q.id), rng)])
-  )
-  const rounds = Math.min(...keys.map((k) => pools[k].length))
-  return Array.from({ length: rounds }, (_, round) =>
-    shuffle(keys, rng).map((k) => pools[k][round])
-  ).flat()
+  return selectQuizQuestions(questions, rng).map((q) => q.id)
 }
 
 export function scoreAnswers(questions, answers) {
-  const keys = ['R', 'I', 'A', 'S', 'E', 'C']
   return Object.fromEntries(
-    keys.map((k) => [
+    RIASEC_KEYS.map((k) => [
       k,
       questions
         .filter((q) => q.area === k)
@@ -22,7 +41,7 @@ export function scoreAnswers(questions, answers) {
 }
 
 export function buildProfile(scores, areas, pairs) {
-  const KEYS = ['R', 'I', 'A', 'S', 'E', 'C']
+  const KEYS = RIASEC_KEYS
   const sorted = [...KEYS].sort((a, b) => scores[b] - scores[a])
   const groups = []
   sorted.forEach((k) => {
