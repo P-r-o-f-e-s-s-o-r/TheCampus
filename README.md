@@ -7,7 +7,7 @@ Monorepo for the SapiensCampus interest-discovery experience:
 | App | Stack | Role |
 |---|---|---|
 | `web/` | Vite + React | Student quiz + waitlist signup |
-| `admin/` | Vite + React + Firebase Auth | Manage questions & view waitlist |
+| `admin/` | Vite + React + Google Sign-In | Manage questions & view waitlist (`sapienscampus.in@gmail.com`) |
 | `functions/` | Firebase Functions (Express) | `/api/questions`, `/api/waitlist`, admin APIs |
 | `shared/questions.template.json` | JSON | Import/export template for quiz content |
 
@@ -48,8 +48,10 @@ Seed questions + admin allowlist (requires Application Default Credentials / `fi
 
 ```bash
 cd functions
-ADMIN_EMAIL=sapienscampus@gmail.com ADMIN_PASSWORD='choose-a-password' npm run seed
+ADMIN_EMAIL=sapienscampus.in@gmail.com npm run seed
 ```
+
+Admin uses **Google Sign-In**. The allowlisted account is `sapienscampus.in@gmail.com` (also hardcoded in Cloud Functions). After enabling Google in Auth, make sure `sapienscampus-admin.web.app` and `localhost` are under Authentication → Settings → Authorized domains.
 
 ---
 

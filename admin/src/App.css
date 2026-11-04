@@ -105,6 +105,21 @@ th, td {
 }
 .ok { color: #0f7a3c; font-weight: 600; }
 .error { color: #b42318; font-weight: 600; }
+.muted { color: #5b6b78; margin: 0; }
+.login { max-width: 420px; }
+.google {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #c5d0da;
+  background: #12202c;
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.google:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
 
 @media (max-width: 720px) {
   .grid { grid-template-columns: 1fr; }

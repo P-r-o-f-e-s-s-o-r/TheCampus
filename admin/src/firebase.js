@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCjS0Kk5ve0DeI3ijc-O59-jIUqo0hGiqQ',
@@ -11,5 +11,13 @@ const firebaseConfig = {
   measurementId: 'G-W6RB06V7GZ',
 }
 
+export const ADMIN_EMAIL = 'sapienscampus.in@gmail.com'
+
 export const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
+
+export const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({
+  prompt: 'select_account',
+  login_hint: ADMIN_EMAIL,
+})
