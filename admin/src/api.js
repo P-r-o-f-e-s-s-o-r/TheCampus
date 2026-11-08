@@ -90,3 +90,7 @@ export const updateCampus = (body) =>
   request('/api/admin/campus', { method: 'PUT', body: JSON.stringify(body) })
 
 export const listUsers = () => request('/api/admin/users')
+
+export const getRoadmapCatalog = () => request('/api/admin/roadmaps')
+export const reconcileRoadmaps = () =>
+  request('/api/admin/roadmaps/reconcile', { method: 'POST', body: JSON.stringify({}) })

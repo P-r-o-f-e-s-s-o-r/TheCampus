@@ -1,0 +1,233 @@
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+
+/** Fixed discovery mascots. Avatar files are the supplied originals. */
+const AVATARS = {
+  builders: "Beaver",
+  hackers: "Fox",
+  creators: "Peacock",
+  connectors: "Dolphin",
+  leaders: "Wolf",
+  planners: "Spider",
+};
+
+const AVATAR_FILES = {
+  builders: "builders-beaver.svg",
+  hackers: "hackers-fox.svg",
+  creators: "creators-peacock.svg",
+  connectors: "connectors-dolphin.svg",
+  leaders: "leaders-wolf.svg",
+  planners: "planners-spider.svg",
+};
+
+const MAX_STEPS = 15;
+const MIN_ESTIMATE = 20;
+const MAX_ESTIMATE = 75;
+
+function push(errors, message) {
+  errors.push(message);
+}
+
+function isHttps(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && !parsed.username && !parsed.password;
+  } catch (_err) {
+    return false;
+  }
+}
+
+/**
+ * Validate authored roadmap JSON and return a public catalog.
+ * Shipping this file in source control publishes versioned trails.
+ * The seed's editorial status is preserved separately from `status`.
+ */
+function validateContent(raw) {
+  const errors = [];
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.roles)) {
+    return { ok: false, errors: ["Roadmap content must include a roles array."], catalog: null };
+  }
+
+  const seenIds = new Set();
+  const byRole = {};
+
+  raw.roles.forEach((role, roleIndex) => {
+    const where = `roles[${roleIndex}]`;
+    const id = role && role.id;
+    if (!AVATARS[id]) {
+      push(errors, `${where} has unknown role id "${id}"`);
+      return;
+    }
+    if (role.avatar !== AVATARS[id]) {
+      push(errors, `${where} avatar must be ${AVATARS[id]}`);
+    }
+    const version = Number(role.version);
+    if (!Number.isInteger(version) || version < 1) {
+      push(errors, `${where} version must be a positive integer`);
+    }
+    if (!role.title || !role.description) {
+      push(errors, `${where} needs a title and description`);
+    }
+    if (!Array.isArray(role.steps) || role.steps.length < 1 || role.steps.length > MAX_STEPS) {
+      push(errors, `${where} must have 1–${MAX_STEPS} steps`);
+      return;
+    }
+
+    const orders = new Set();
+    const steps = role.steps.map((step, stepIndex) => {
+      const at = `${where}.steps[${stepIndex}]`;
+      if (!step || typeof step !== "object") {
+        push(errors, `${at} is missing`);
+        return null;
+      }
+      if (!step.id || typeof step.id !== "string" || !/^[a-z0-9-]{4,80}$/.test(step.id)) {
+        push(errors, `${at} has an invalid id`);
+      } else if (seenIds.has(step.id)) {
+        push(errors, `${at} duplicates step id ${step.id}`);
+      } else {
+        seenIds.add(step.id);
+      }
+      if (step.role !== id) push(errors, `${at} role does not match ${id}`);
+      if (Number(step.version) !== version) push(errors, `${at} version does not match the trail`);
+      const order = Number(step.order);
+      if (!Number.isInteger(order) || order < 1 || order > role.steps.length) {
+        push(errors, `${at} order is out of range`);
+      } else if (orders.has(order)) {
+        push(errors, `${at} duplicates order ${order}`);
+      } else {
+        orders.add(order);
+      }
+      const estimate = Number(step.estimateMinutes);
+      if (!Number.isInteger(estimate) || estimate < MIN_ESTIMATE || estimate > MAX_ESTIMATE) {
+        push(errors, `${at} estimate must be an integer from ${MIN_ESTIMATE} to ${MAX_ESTIMATE} minutes`);
+      }
+      for (const field of ["type", "title", "goal", "task", "requiredOutput", "fallback"]) {
+        if (!step[field] || !String(step[field]).trim()) push(errors, `${at} is missing ${field}`);
+      }
+      if (!Array.isArray(step.doneChecklist) || step.doneChecklist.length < 2) {
+        push(errors, `${at} needs at least two checklist items`);
+      } else if (step.doneChecklist.some((item) => !item || !String(item).trim())) {
+        push(errors, `${at} has an empty checklist item`);
+      }
+      const resource = step.primaryResource || {};
+      if (!resource.title || !resource.publisher || !resource.slice || !resource.accessNote) {
+        push(errors, `${at} resource is missing title, publisher, slice, or access note`);
+      }
+      if (!isHttps(resource.url)) {
+        push(errors, `${at} resource URL must be https with no credentials`);
+      }
+      if (!step) return null;
+      return {
+        id: step.id,
+        order,
+        type: String(step.type || "").trim(),
+        title: String(step.title || "").trim(),
+        goal: String(step.goal || "").trim(),
+        estimateMinutes: estimate,
+        estimateLabel:
+          step.estimateLabel ||
+          "Estimated active time including the selected resource slice; flexible, not a deadline",
+        task: String(step.task || "").trim(),
+        requiredOutput: String(step.requiredOutput || "").trim(),
+        checklist: Array.isArray(step.doneChecklist)
+          ? step.doneChecklist.map((item) => String(item).trim())
+          : [],
+        resource: {
+          publisher: String(resource.publisher || "").trim(),
+          title: String(resource.title || "").trim(),
+          url: String(resource.url || "").trim(),
+          slice: String(resource.slice || "").trim(),
+          accessNote: String(resource.accessNote || "").trim(),
+        },
+        fallback: String(step.fallback || "").trim(),
+        completionNote:
+          step.completion || "Self-attested checklist. This is your own record, not a graded pass.",
+      };
+    });
+
+    for (let n = 1; n <= role.steps.length; n += 1) {
+      if (!orders.has(n)) push(errors, `${where} is missing step order ${n}`);
+    }
+
+    const normalized = {
+      id,
+      title: String(role.title || id).trim(),
+      avatar: AVATARS[id],
+      avatarFile: AVATAR_FILES[id],
+      version,
+      description: String(role.description || "").trim(),
+      steps: steps.filter(Boolean).sort((a, b) => a.order - b.order),
+    };
+    byRole[id] = byRole[id] || {};
+    if (byRole[id][version]) push(errors, `${id} version ${version} is duplicated`);
+    byRole[id][version] = normalized;
+  });
+
+  for (const id of Object.keys(AVATARS)) {
+    if (!byRole[id] || !Object.keys(byRole[id]).length) {
+      push(errors, `missing trail for ${id}`);
+    }
+  }
+
+  if (errors.length) return { ok: false, errors, catalog: null };
+
+  const roles = [];
+  for (const id of Object.keys(AVATARS)) {
+    for (const version of Object.keys(byRole[id])
+      .map(Number)
+      .sort((a, b) => a - b)) {
+      roles.push(byRole[id][version]);
+    }
+  }
+
+  return {
+    ok: true,
+    errors: [],
+    catalog: {
+      contentVersion: String(raw.contentVersion || "unpublished"),
+      checkedDate: raw.checkedDate || null,
+      editorialStatus: raw.status || null,
+      status: "published",
+      audience: raw.audience || "",
+      unlockPolicy: raw.unlockPolicy || "Prior steps complete; the next step unlocks immediately.",
+      resourceNote:
+        "Links were checked before publish. Videos were not watched; only the named section is assigned. If a link will not load, the task in this step is enough.",
+      countDisclosure:
+        "Anonymous totals for learners enrolled on this version of the trail. A step is self-marked, not a verified skill or a sign someone is online. Totals can fall after an undo, restart, or role change, and may lag briefly. Small groups can sometimes be guessed; this is not a promise of anonymity.",
+      roles,
+    },
+  };
+}
+
+function loadSeed(file = path.join(__dirname, "..", "data", "roadmap-content.json")) {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  const result = validateContent(raw);
+  if (!result.ok) {
+    const error = new Error(`Roadmap seed is invalid:\n${result.errors.join("\n")}`);
+    error.errors = result.errors;
+    throw error;
+  }
+  return result.catalog;
+}
+
+function indexCatalog(catalog) {
+  const byRole = new Map();
+  for (const role of catalog.roles) {
+    if (!byRole.has(role.id)) byRole.set(role.id, new Map());
+    byRole.get(role.id).set(role.version, role);
+  }
+  return byRole;
+}
+
+module.exports = {
+  AVATARS,
+  AVATAR_FILES,
+  MAX_STEPS,
+  MIN_ESTIMATE,
+  MAX_ESTIMATE,
+  validateContent,
+  loadSeed,
+  indexCatalog,
+};

@@ -32,6 +32,10 @@ Student web includes **Firebase Analytics** + **Performance Monitoring**. Key fu
 | `users/{uid}` | Student profiles + discovery answers/scores/roles |
 | `waitlist/{id}` | Legacy signup emails + optional answers/scores |
 | `admins/{email}` | Allowlisted admin emails |
+| `roadmapPrivate/{id}` | Owner enrolment, attempts, notes, and operation ids. Cloud Functions only. |
+| `roadmapCounts/{id}` | Anonymous per-version step counts. Cloud Functions only. |
+
+Roadmap counts use the existing Cloud Firestore Native `(default)` database in `asia-south1` through the Admin SDK. The web client cannot read or write these documents. Notes are not included in admin or public responses.
 
 Client SDK access is denied by rules — all reads/writes go through Cloud Functions.
 
@@ -77,7 +81,11 @@ firebase deploy --only firestore,functions,hosting
 - `POST /api/invites/check` — validate invite without consuming  
 - `GET /api/colleges` — active colleges + departments  
 - `GET /api/colleges/:id/stats` — signed-up count  
-- `GET /api/me`, `POST /api/me/profile`, `POST /api/me/discovery` — student Bearer token  
+- `GET /api/me`, `POST /api/me/profile`, `POST /api/me/discovery` — student Bearer token
+- `GET /api/roadmaps` and `GET /api/roadmaps/:roleId` — published trail content
+- `GET /api/roadmaps/:roleId/counts` — anonymous per-step counts for one version
+- `GET /api/me/roadmap`, `POST /api/me/roadmap/start|switch|checklist|complete|undo|notes|restart` — owner progress and private notes
+- `GET /api/admin/roadmaps`, `POST /api/admin/roadmaps/reconcile` — catalog check and count repair, never student notes  
 - `POST /api/waitlist` — legacy `{ email, consent, company?, answers?, scores? }`  
 
 ## Admin API (Bearer Firebase ID token)

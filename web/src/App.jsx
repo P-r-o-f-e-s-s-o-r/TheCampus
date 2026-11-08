@@ -4,9 +4,11 @@ import {
   fetchCollegeStats,
   fetchColleges,
   fetchMe,
+  fetchMyRoadmap,
   fetchQuestions,
   saveDiscovery,
   saveProfile,
+  switchRoadmap,
 } from './lib/api'
 import {
   QUIZ_LENGTH,
@@ -33,7 +35,14 @@ import {
   trackScreen,
 } from './lib/analytics'
 import { avatarForRole } from './lib/roleAvatars'
+import RoadmapView from './roadmap/RoadmapView'
 import './App.css'
+
+function parseRoadmapHash(hash = '') {
+  const match = String(hash).match(/^#roadmap\/([a-z]+)(?:\/([a-z0-9-]+))?$/)
+  if (!match) return null
+  return { roleId: match[1], stepId: match[2] || '' }
+}
 
 const STORAGE_KEY = 'sapiens-campus-discovery-v4'
 
@@ -101,11 +110,18 @@ function loadState() {
   }
 }
 
-function Header({ note = true, user, onSignOut }) {
+function Header({ note = true, user, onSignOut, onBrand }) {
   return (
     <header className="site-header">
       <div className="nav-wrap">
-        <a className="brand" href="/" onClick={(e) => e.preventDefault()}>
+        <a
+          className="brand"
+          href="/"
+          onClick={(e) => {
+            e.preventDefault()
+            onBrand?.()
+          }}
+        >
           <img src="/lufy-icon.png" alt="" />
           <span>
             SapiensCampus<span aria-hidden="true">.</span>
@@ -229,6 +245,8 @@ export default function App() {
   const [selectedRoleId, setSelectedRoleId] = useState('')
   const [roleConfirmed, setRoleConfirmed] = useState(false)
   const [confirmingRole, setConfirmingRole] = useState(false)
+  const [roadmapEntry, setRoadmapEntry] = useState(() => parseRoadmapHash(window.location.hash))
+  const [roadmapSummary, setRoadmapSummary] = useState(null)
   const profileErrorRef = useRef(null)
 
   const boosts = pack?.boosts?.length ? pack.boosts : FALLBACK_BOOSTS
@@ -277,6 +295,49 @@ export default function App() {
     trackScreen(view)
   }, [view])
 
+  const profileRef = useRef(profile)
+  useEffect(() => {
+    profileRef.current = profile
+  }, [profile])
+
+  useEffect(() => {
+    function syncHash() {
+      const parsed = parseRoadmapHash(window.location.hash)
+      if (parsed) {
+        setRoadmapEntry(parsed)
+        setView('roadmap')
+        return
+      }
+      setView((current) => {
+        if (current !== 'roadmap') return current
+        return profileRef.current?.hasAnswers ? 'results' : 'landing'
+      })
+    }
+    window.addEventListener('hashchange', syncHash)
+    window.addEventListener('popstate', syncHash)
+    return () => {
+      window.removeEventListener('hashchange', syncHash)
+      window.removeEventListener('popstate', syncHash)
+    }
+  }, [])
+
+  function openRoadmap(roleId, stepId = '', mode = 'push') {
+    const next = stepId ? `#roadmap/${roleId}/${stepId}` : `#roadmap/${roleId}`
+    if (window.location.hash !== next) {
+      const historyMode = mode === 'replace' ? 'replaceState' : 'pushState'
+      window.history[historyMode]({ roadmap: true }, '', next)
+    }
+    setRoadmapEntry({ roleId, stepId })
+    setView('roadmap')
+  }
+
+  function leaveRoadmap() {
+    if (window.location.hash.startsWith('#roadmap')) {
+      window.history.pushState(null, '', `${window.location.pathname}${window.location.search}`)
+    }
+    setView(profile?.hasAnswers || roleConfirmed ? 'results' : 'landing')
+  }
+
   useEffect(() => {
     Promise.all([fetchQuestions(), fetchColleges()])
       .then(async ([qData, cData]) => {
@@ -307,6 +368,11 @@ export default function App() {
         if (saved?.mobile) setMobile(saved.mobile)
         if (saved?.selectedRoleId) setSelectedRoleId(saved.selectedRoleId)
         if (saved?.roleConfirmed) setRoleConfirmed(Boolean(saved.roleConfirmed))
+        const fromHash = parseRoadmapHash(window.location.hash)
+        if (fromHash) {
+          setRoadmapEntry(fromHash)
+          setView('roadmap')
+        }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
@@ -714,6 +780,27 @@ export default function App() {
     }
   }, [view, roleProfile, profile?.selectedRole?.id, roleConfirmed])
 
+  useEffect(() => {
+    if (!user || !profile?.selectedRole?.id) {
+      setRoadmapSummary(null)
+      return undefined
+    }
+    let alive = true
+    fetchMyRoadmap()
+      .then((data) => {
+        if (!alive) return
+        const active = data?.active
+        if (active?.roleId === profile.selectedRole.id) setRoadmapSummary(active.progress || null)
+        else setRoadmapSummary(null)
+      })
+      .catch(() => {
+        if (alive) setRoadmapSummary(null)
+      })
+    return () => {
+      alive = false
+    }
+  }, [user, profile?.selectedRole?.id, view])
+
   const suggestedRolePayload = useMemo(() => {
     if (!roleProfile?.roles?.length) return []
     return roleProfile.roles.map((r) => ({
@@ -765,6 +852,14 @@ export default function App() {
       if (answersForSave) payload.answers = answersForSave
       if (scoresForSave) payload.scores = scoresForSave
       await saveDiscovery(payload)
+      try {
+        const mine = await fetchMyRoadmap()
+        if (mine?.active && mine.active.roleId !== selectedRole.id) {
+          await switchRoadmap({ roleId: selectedRole.id, opId: crypto.randomUUID() })
+        }
+      } catch {
+        // The role choice is already saved. The trail switch can be retried from the roadmap.
+      }
       setRoleConfirmed(true)
       setProfile((p) =>
         p
@@ -848,7 +943,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header user={user} onSignOut={onSignOut} />
+      <Header
+        user={user}
+        onSignOut={onSignOut}
+        onBrand={view === 'roadmap' ? leaveRoadmap : undefined}
+      />
 
       {error && view !== 'quiz' && (
         <div className="wrap" style={{ paddingTop: 16 }}>
@@ -1348,7 +1447,7 @@ export default function App() {
                 <fieldset className="role-pick" disabled={roleConfirmed && Boolean(profile?.selectedRole?.id)}>
                   <legend className="role-pick-legend">
                     {roleProfile.roles.length === 2
-                      ? 'Choose your starting role'
+                      ? 'Choose your starting role. This is a starting point. You can change later.'
                       : 'Your starting role'}
                   </legend>
                   <div
@@ -1462,44 +1561,73 @@ export default function App() {
                   </section>
                 </div>
 
-                <section className="waitlist roadmap-lock" id="roadmap">
+                <section className="waitlist" id="roadmap">
                   <div>
-                    <p className="eyebrow">Roadmap · locked</p>
+                    <p className="eyebrow">Roadmap</p>
                     <h2 style={{ fontSize: 'clamp(28px, 5vw, 36px)', margin: '8px 0 12px' }}>
-                      Your {chosenRole.name} path is waiting.
-                      <br />
-                      Unlock it with peers.
+                      {roadmapSummary
+                        ? `Continue your ${chosenRole.name} trail`
+                        : `Explore the ${chosenRole.name} trail`}
                     </h2>
                     <p className="muted" style={{ fontSize: 14, maxWidth: '48ch' }}>
-                      Day-by-day micro tasks for {chosenRole.name} unlock when you join the
-                      WhatsApp campus group — connect, ask questions, and grow together.
+                      Ten small steps for {chosenRole.name}. Most take well under an hour. Mark one
+                      done and the next unlocks. Notes stay private.
                     </p>
+                    {roadmapSummary && (
+                      <p className="roadmap-progress" style={{ marginTop: 8 }}>
+                        {roadmapSummary.done || 0} / {roadmapSummary.total || 10} steps saved
+                      </p>
+                    )}
                   </div>
                   <div className="waitlist-form">
+                    <button
+                      type="button"
+                      className="btn dark block"
+                      onClick={() => openRoadmap(chosenRole.id)}
+                    >
+                      {roadmapSummary ? 'Continue roadmap →' : 'Explore this roadmap →'}
+                    </button>
                     {whatsappUrl ? (
                       <a
-                        className="btn dark block"
+                        className="linkish"
                         href={whatsappUrl}
                         target="_blank"
                         rel="noreferrer"
                         onClick={onWhatsAppClick}
                       >
-                        Join WhatsApp campus group →
+                        Optional: join the WhatsApp campus group
                       </a>
-                    ) : (
-                      <p className="status">
-                        WhatsApp link coming soon — ask your campus lead for the group invite.
-                      </p>
-                    )}
-                    <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-                      Engage in the group to unlock your roadmap and meet students like you.
-                    </p>
+                    ) : null}
                   </div>
                 </section>
               </>
             )}
           </div>
         </section>
+      )}
+
+      {view === 'roadmap' && roadmapEntry && (
+        <RoadmapView
+          user={user}
+          profile={profile}
+          roleId={roadmapEntry.roleId}
+          stepId={roadmapEntry.stepId}
+          onOpenStep={(nextStepId) => openRoadmap(roadmapEntry.roleId, nextStepId)}
+          onCloseStep={() => {
+            if (window.history.state?.roadmap && roadmapEntry.stepId) {
+              window.history.back()
+              return
+            }
+            openRoadmap(roadmapEntry.roleId, '', 'replace')
+          }}
+          onChangeRole={(nextRoleId) => openRoadmap(nextRoleId)}
+          onExit={leaveRoadmap}
+          onSelectedRole={(selectedRole) => {
+            setProfile((current) => (current ? { ...current, selectedRole } : current))
+            setSelectedRoleId(selectedRole.id)
+            setRoleConfirmed(true)
+          }}
+        />
       )}
 
       {view === 'landing' || view === 'results' ? <Footer /> : null}

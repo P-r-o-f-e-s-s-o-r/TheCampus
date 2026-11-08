@@ -22,6 +22,7 @@ async function request(path, options = {}) {
     const error = new Error(data.error || `Request failed (${res.status})`)
     error.code = data.code || `http_${res.status}`
     error.status = res.status
+    error.details = data
     throw error
   }
   return data
@@ -82,4 +83,54 @@ export function joinWaitlist(payload) {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export function fetchRoadmapCatalog() {
+  return request('/api/roadmaps')
+}
+
+export function fetchRoadmap(roleId, version) {
+  const query = version == null ? '' : `?version=${encodeURIComponent(version)}`
+  return request(`/api/roadmaps/${encodeURIComponent(roleId)}${query}`)
+}
+
+export function fetchRoadmapCounts(roleId, version) {
+  const query = version == null ? '' : `?version=${encodeURIComponent(version)}`
+  return request(`/api/roadmaps/${encodeURIComponent(roleId)}/counts${query}`)
+}
+
+export function fetchMyRoadmap() {
+  return authRequest('/api/me/roadmap')
+}
+
+function postRoadmap(path, body) {
+  return authRequest(path, { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function startRoadmap(body) {
+  return postRoadmap('/api/me/roadmap/start', body)
+}
+
+export function switchRoadmap(body) {
+  return postRoadmap('/api/me/roadmap/switch', body)
+}
+
+export function saveRoadmapChecklist(body) {
+  return postRoadmap('/api/me/roadmap/checklist', body)
+}
+
+export function completeRoadmapStep(body) {
+  return postRoadmap('/api/me/roadmap/complete', body)
+}
+
+export function undoRoadmapStep(body) {
+  return postRoadmap('/api/me/roadmap/undo', body)
+}
+
+export function saveRoadmapNotes(body) {
+  return postRoadmap('/api/me/roadmap/notes', body)
+}
+
+export function restartRoadmap(body) {
+  return postRoadmap('/api/me/roadmap/restart', body)
 }

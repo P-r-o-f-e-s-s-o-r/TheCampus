@@ -22,6 +22,7 @@ import {
   updateInvite,
   updateQuestion,
 } from './api'
+import RoadmapAdmin from './RoadmapAdmin'
 import './App.css'
 
 function EditIcon({ size = 15 }) {
@@ -486,8 +487,14 @@ export default function App() {
     campus: {
       mono: 'Config',
       title: 'Campus',
-      desc: 'Global WhatsApp campus group link for the locked roadmap CTA.',
+      desc: 'Optional WhatsApp campus group. Discovery trails live in the student app and do not require the group.',
       sticker: 'Connect ✳',
+    },
+    roadmaps: {
+      mono: 'Trails',
+      title: 'Roadmaps',
+      desc: 'Published role trails. Student notes stay private.',
+      sticker: 'Versioned ✳',
     },
   }[tab] || {
     mono: 'Admin',
@@ -893,6 +900,13 @@ export default function App() {
             active={tab === 'campus'}
             onClick={switchTab}
           />
+          <NavItem
+            id="roadmaps"
+            label="Roadmaps"
+            code="06"
+            active={tab === 'roadmaps'}
+            onClick={switchTab}
+          />
           <button
             type="button"
             className="btn sm block mobile-signout"
@@ -939,6 +953,13 @@ export default function App() {
               label="Campus"
               code="05"
               active={tab === 'campus'}
+              onClick={switchTab}
+            />
+            <NavItem
+              id="roadmaps"
+              label="Roadmaps"
+              code="06"
+              active={tab === 'roadmaps'}
               onClick={switchTab}
             />
           </nav>
@@ -1584,6 +1605,8 @@ export default function App() {
             </>
           )}
 
+          {tab === 'roadmaps' && <RoadmapAdmin />}
+
           {tab === 'campus' && (
             <Window title="WhatsApp campus group">
               <form className="stack" onSubmit={onSaveCampus}>
@@ -1598,7 +1621,7 @@ export default function App() {
                   />
                 </label>
                 <p className="muted" style={{ fontSize: 13 }}>
-                  Shown on results to unlock the roadmap and connect with peers.
+                  Optional campus group link. It does not unlock or hide a student’s roadmap.
                 </p>
                 <button type="submit" className="btn dark sm" disabled={busy}>
                   {busy ? 'Saving…' : 'Save campus config'}

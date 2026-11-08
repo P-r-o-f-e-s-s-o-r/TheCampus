@@ -1304,6 +1304,22 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
   }
 });
 
+try {
+  const { createProductionRouter } = require("./roadmap/routes");
+  router.use(
+    createProductionRouter({
+      db,
+      users: USERS,
+      admins: ADMINS,
+      bootstrapEmails: BOOTSTRAP_ADMIN_EMAILS,
+      requireStudent,
+      requireAdmin,
+    })
+  );
+} catch (err) {
+  console.error("roadmap routes unavailable", err && err.message ? err.message : "invalid seed");
+}
+
 app.use("/api", router);
 app.use(router);
 
