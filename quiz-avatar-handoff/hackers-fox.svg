@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="fox-title fox-desc">
+<title id="fox-title">Fox avatar – Hackers</title><desc id="fox-desc">A curious fox with tall pointed ears and a big fluffy white-tipped tail, the Sapiens Campus Hackers mascot.</desc><defs><linearGradient id="fox-y" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe7a0"/><stop offset="1" stop-color="#ffd966"/></linearGradient><linearGradient id="fox-yd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd966"/><stop offset="1" stop-color="#f0b43c"/></linearGradient><linearGradient id="fox-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#fff0c8"/></linearGradient><linearGradient id="fox-o" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc35a"/><stop offset="1" stop-color="#e8892a"/></linearGradient></defs>
+<g stroke="#0a0a0a" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
+<ellipse cx="262" cy="452" rx="170" ry="18" fill="#0a0a0a" stroke="none"/>
+
+<path d="M300 430 Q470 440 460 300 Q452 210 380 200 Q420 290 340 360 Z" fill="url(#fox-o)"/>
+<path d="M380 200 Q440 200 456 262 Q420 250 400 228 Z" fill="url(#fox-c)"/>
+<path d="M176 440 Q150 330 200 270 L312 270 Q362 330 336 440 Z" fill="url(#fox-o)"/>
+<path d="M216 440 Q200 340 256 300 Q312 340 296 440 Z" fill="url(#fox-c)"/>
+<path d="M150 170 L140 50 L232 116 Z" fill="url(#fox-o)"/><path d="M362 170 L372 50 L280 116 Z" fill="url(#fox-o)"/>
+<path d="M162 140 L158 84 L204 118 Z M350 140 L354 84 L308 118 Z" fill="#0a0a0a" stroke-width="4"/>
+<path d="M256 104 Q360 104 380 180 Q384 220 300 262 L256 296 L212 262 Q128 220 132 180 Q152 104 256 104 Z" fill="url(#fox-o)"/>
+<path d="M134 186 Q196 196 226 236 L256 296 L286 236 Q316 196 378 186 Q370 232 300 262 L256 296 L212 262 Q142 232 134 186 Z" fill="url(#fox-c)"/>
+<circle cx="206" cy="182" r="12" fill="#0a0a0a" stroke="none"/><circle cx="210.2" cy="177.2" r="4.199999999999999" fill="#fff" stroke="none"/><circle cx="306" cy="182" r="12" fill="#0a0a0a" stroke="none"/><circle cx="310.2" cy="177.2" r="4.199999999999999" fill="#fff" stroke="none"/>
+<path d="M240 270 Q256 262 272 270 Q264 290 256 292 Q248 290 240 270 Z" fill="#0a0a0a"/>
+<ellipse cx="216" cy="440" rx="30" ry="14" fill="#0a0a0a"/><ellipse cx="296" cy="440" rx="30" ry="14" fill="#0a0a0a"/>
+</g></svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="dolphin-title dolphin-desc">
+<title id="dolphin-title">Dolphin avatar – Connectors</title><desc id="dolphin-desc">A smiling dolphin leaping in a curved arc with a dorsal fin and flukes, the Sapiens Campus Connectors mascot.</desc><defs><linearGradient id="dolphin-y" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe7a0"/><stop offset="1" stop-color="#ffd966"/></linearGradient><linearGradient id="dolphin-yd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd966"/><stop offset="1" stop-color="#f0b43c"/></linearGradient><linearGradient id="dolphin-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#fff0c8"/></linearGradient><linearGradient id="dolphin-b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fd0ec"/><stop offset="1" stop-color="#5a9fcc"/></linearGradient></defs>
+<g stroke="#0a0a0a" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
+<ellipse cx="262" cy="452" rx="170" ry="18" fill="#0a0a0a" stroke="none"/>
+
+
+<path d="M232 128 Q250 70 300 66 Q284 104 292 136 Z" fill="url(#dolphin-b)"/>
+<path d="M380 352 L440 300 Q446 350 420 372 Q460 392 456 430 Q400 420 372 384 Z" fill="url(#dolphin-b)"/>
+<path d="M90 236 Q60 214 64 196 Q100 182 128 194 Q150 140 230 126 Q340 112 396 210 Q426 270 392 380 Q360 330 320 286 Q260 230 160 252 Q120 258 90 236 Z" fill="url(#dolphin-b)"/>
+<path d="M90 236 Q120 258 160 252 Q260 230 320 286 Q360 330 392 380 Q330 260 250 250 Q170 270 110 244 Z" fill="url(#dolphin-c)"/>
+<path d="M228 262 Q248 300 226 330 Q210 296 200 266 Z" fill="url(#dolphin-b)"/>
+<path d="M72 206 Q100 232 146 220" fill="none" stroke-width="7"/><ellipse cx="160" cy="214" rx="9" ry="6" fill="#ff9fa8" stroke="none"/>
+<circle cx="176" cy="190" r="13" fill="#0a0a0a" stroke="none"/><circle cx="180.55" cy="184.8" r="4.55" fill="#fff" stroke="none"/><path d="M162 168 Q178 160 192 170" fill="none" stroke-width="6"/>
+</g></svg>

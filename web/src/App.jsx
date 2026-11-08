@@ -32,6 +32,7 @@ import {
   track,
   trackScreen,
 } from './lib/analytics'
+import { avatarForRole } from './lib/roleAvatars'
 import './App.css'
 
 const STORAGE_KEY = 'sapiens-campus-discovery-v4'
@@ -225,6 +226,9 @@ export default function App() {
   const [collegeCount, setCollegeCount] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [busyAuth, setBusyAuth] = useState(false)
+  const [selectedRoleId, setSelectedRoleId] = useState('')
+  const [roleConfirmed, setRoleConfirmed] = useState(false)
+  const [confirmingRole, setConfirmingRole] = useState(false)
   const profileErrorRef = useRef(null)
 
   const boosts = pack?.boosts?.length ? pack.boosts : FALLBACK_BOOSTS
@@ -301,6 +305,8 @@ export default function App() {
         if (saved?.departmentId) setDepartmentId(saved.departmentId)
         if (saved?.passoutYear) setPassoutYear(String(saved.passoutYear))
         if (saved?.mobile) setMobile(saved.mobile)
+        if (saved?.selectedRoleId) setSelectedRoleId(saved.selectedRoleId)
+        if (saved?.roleConfirmed) setRoleConfirmed(Boolean(saved.roleConfirmed))
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
@@ -323,6 +329,10 @@ export default function App() {
           setDepartmentId(me.departmentId || '')
           setPassoutYear(me.passoutYear ? String(me.passoutYear) : '')
           if (me.mobile) setMobile(me.mobile)
+        }
+        if (me?.selectedRole?.id) {
+          setSelectedRoleId(me.selectedRole.id)
+          setRoleConfirmed(true)
         }
         const entryViews = new Set(['landing', 'invite', 'welcome', 'signup'])
         setView((v) => {
@@ -350,6 +360,8 @@ export default function App() {
         departmentId,
         passoutYear,
         mobile,
+        selectedRoleId,
+        roleConfirmed,
       })
     )
   }, [
@@ -364,6 +376,8 @@ export default function App() {
     departmentId,
     passoutYear,
     mobile,
+    selectedRoleId,
+    roleConfirmed,
   ])
 
   useEffect(() => {
@@ -675,34 +689,109 @@ export default function App() {
       : null
 
   useEffect(() => {
-    if (view !== 'results' || !user || !scores || !roleProfile) return
-    if (!quiz.length) return
+    if (view !== 'results' || !roleProfile) return
     track('results_view', {
       role_count: roleProfile.roles.length,
       roles: roleProfile.roles.map((r) => r.name).join(','),
     })
-    saveDiscovery({
-      answers,
-      scores,
-      roles: roleProfile.roles.map((r) => ({
-        id: r.id,
-        name: r.name,
-        key: r.key,
-        score: r.score,
-      })),
-    })
-      .then(() => {
-        track('discovery_saved', {
-          role_count: roleProfile.roles.length,
-        })
-        setProfile((p) =>
-          p ? { ...p, hasAnswers: true, roles: roleProfile.roles } : p
-        )
+  }, [view, roleProfile])
+
+  // Single suggested role: prefill selection (still requires Continue). Never preselect a blend.
+  useEffect(() => {
+    if (view !== 'results' || !roleProfile) return
+    if (profile?.selectedRole?.id) {
+      setSelectedRoleId(profile.selectedRole.id)
+      setRoleConfirmed(true)
+      return
+    }
+    if (roleProfile.roles.length === 1) {
+      setSelectedRoleId((prev) => prev || roleProfile.roles[0].id)
+      return
+    }
+    if (roleProfile.roles.length === 2 && !roleConfirmed) {
+      // Keep any in-progress choice; do not invent a default for a fresh blend.
+      return
+    }
+  }, [view, roleProfile, profile?.selectedRole?.id, roleConfirmed])
+
+  const suggestedRolePayload = useMemo(() => {
+    if (!roleProfile?.roles?.length) return []
+    return roleProfile.roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      key: r.key,
+      score: r.score,
+    }))
+  }, [roleProfile])
+
+  const chosenRole = useMemo(() => {
+    if (!selectedRoleId || !roleProfile?.roles?.length) return null
+    return roleProfile.roles.find((r) => r.id === selectedRoleId) || null
+  }, [selectedRoleId, roleProfile])
+
+  async function confirmSelectedRole() {
+    if (!chosenRole) {
+      setError('Pick one starting role to continue.')
+      return
+    }
+    if (!user) {
+      setError('Please sign in again to save your discovery.')
+      return
+    }
+    const scoresForSave = scores || profile?.scores
+    const answersForSave = Object.keys(answers).length ? answers : null
+    if (!scoresForSave && !profile?.hasAnswers) {
+      setError('Finish the quiz before choosing a role.')
+      return
+    }
+    setConfirmingRole(true)
+    setError('')
+    const avatar = avatarForRole(chosenRole)
+    const selectedRole = {
+      id: chosenRole.id,
+      name: chosenRole.name,
+      key: chosenRole.key,
+      score: chosenRole.score,
+      animal: avatar?.animal || '',
+    }
+    const rolesForSave = suggestedRolePayload.length
+      ? suggestedRolePayload
+      : profile?.roles || []
+    try {
+      const payload = {
+        roles: rolesForSave,
+        selectedRole,
+      }
+      if (answersForSave) payload.answers = answersForSave
+      if (scoresForSave) payload.scores = scoresForSave
+      await saveDiscovery(payload)
+      setRoleConfirmed(true)
+      setProfile((p) =>
+        p
+          ? {
+              ...p,
+              hasAnswers: true,
+              roles: rolesForSave,
+              selectedRole,
+              scores: scoresForSave || p.scores || null,
+            }
+          : p
+      )
+      track('role_selected', {
+        selected_role: selectedRole.id,
+        suggested_count: rolesForSave.length,
+        animal: selectedRole.animal,
       })
-      .catch(() => {
-        track('discovery_save_failed')
+    } catch (err) {
+      track('role_select_failed', {
+        error: String(err.message || '').slice(0, 80),
+        code: String(err.code || '').slice(0, 40),
       })
-  }, [view, user, scores, roleProfile, answers, quiz.length])
+      setError(err.message || 'Couldn’t save your role choice.')
+    } finally {
+      setConfirmingRole(false)
+    }
+  }
 
   async function onSignOut() {
     track('sign_out')
@@ -717,6 +806,8 @@ export default function App() {
     setQuiz([])
     setIndex(0)
     setBoostIndex(0)
+    setSelectedRoleId('')
+    setRoleConfirmed(false)
     if (profile?.collegeId && profile?.mobile) {
       setView('intro')
       return
@@ -1227,112 +1318,186 @@ export default function App() {
               ✳ Explore / complete · {quiz.length || QUIZ_LENGTH} little choices
             </p>
 
-            <div className="result-top">
-              <div className={`passport ${roleProfile.roles[0]?.color || 'cream'}`}>
-                <div className="pass-top">
-                  <span>Your campus roles</span>
-                  <span aria-hidden="true">✳</span>
-                </div>
-                <div className="pass-art">
-                  <img src="/lufy-icon.png" alt="" />
-                </div>
-                <div className="pass-letters role-letters">
-                  {(roleProfile.roles.length
-                    ? roleProfile.roles
-                    : [{ name: '?' }]
-                  ).map((r) => (
-                    <span key={r.id || r.name}>{r.name}</span>
-                  ))}
-                </div>
-                <p>
-                  Not a box.
-                  <br />
-                  <strong>A starting blend.</strong>
+            <div className="result-copy result-lead">
+              <p className="eyebrow">Your discovery</p>
+              <h1>{roleProfile.title}</h1>
+              <p className="desc">{roleProfile.description}</p>
+              <p className="muted" style={{ fontSize: 13, marginTop: 8, maxWidth: '46ch' }}>
+                These are friendly starting points — not diagnoses or fixed labels. Pick the
+                campus role you want to begin exploring.
+              </p>
+              {selectedCollege && collegeCount !== null && (
+                <p className="college-count" style={{ marginTop: 12 }}>
+                  {collegeCountCopy(collegeCount, selectedCollege.name)}
                 </p>
-                <div className="pass-bottom">
-                  <span>SapiensCampus</span>
-                  <span>Explore / 001</span>
-                </div>
-              </div>
+              )}
+            </div>
 
-              <div className="result-copy">
-                <p className="eyebrow">Your discovery</p>
-                <h1>{roleProfile.title}</h1>
-                <p className="desc">{roleProfile.description}</p>
-                {selectedCollege && collegeCount !== null && (
-                  <p className="college-count" style={{ marginTop: 12 }}>
-                    {collegeCountCopy(collegeCount, selectedCollege.name)}
-                  </p>
+            {roleProfile.roles.length === 0 ? (
+              <div className="mix-panel" style={{ marginTop: 20 }}>
+                <p className="muted">
+                  No strong role signal yet. Try the quiz again when you’re ready — or retake
+                  with fresh gut reactions.
+                </p>
+                <button type="button" className="btn dark" onClick={retakeQuiz}>
+                  Take the quiz again →
+                </button>
+              </div>
+            ) : (
+              <>
+                <fieldset className="role-pick" disabled={roleConfirmed && Boolean(profile?.selectedRole?.id)}>
+                  <legend className="role-pick-legend">
+                    {roleProfile.roles.length === 2
+                      ? 'Choose your starting role'
+                      : 'Your starting role'}
+                  </legend>
+                  <div
+                    className={`role-pick-grid${roleProfile.roles.length === 1 ? ' one' : ''}`}
+                  >
+                    {roleProfile.roles.map((role) => {
+                      const avatar = avatarForRole(role)
+                      const checked = selectedRoleId === role.id
+                      return (
+                        <label
+                          key={role.id}
+                          className={`role-avatar-card${checked ? ' selected' : ''}${roleConfirmed && checked ? ' confirmed' : ''}`}
+                        >
+                          <input
+                            type="radio"
+                            name="selected-campus-role"
+                            value={role.id}
+                            checked={checked}
+                            disabled={roleConfirmed && Boolean(profile?.selectedRole?.id)}
+                            onChange={() => {
+                              setSelectedRoleId(role.id)
+                              setRoleConfirmed(false)
+                            }}
+                          />
+                          {avatar ? (
+                            <img src={avatar.src} alt={avatar.alt} width={160} height={160} />
+                          ) : (
+                            <div className="role-avatar-fallback" aria-hidden="true">
+                              {role.name.slice(0, 1)}
+                            </div>
+                          )}
+                          <strong>{role.name}</strong>
+                          {avatar && <span className="role-animal">{avatar.animal}</span>}
+                          <span className="role-blurb">{role.blurb}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </fieldset>
+
+                {error && view === 'results' && (
+                  <div className="form-error" role="alert" style={{ marginTop: 16 }}>
+                    <strong>Couldn’t save</strong>
+                    <p>{error}</p>
+                  </div>
                 )}
-                <div className="result-actions">
-                  <button type="button" className="btn dark" onClick={retakeQuiz}>
-                    Take the quiz again →
+
+                <div className="result-actions role-confirm-actions">
+                  {!roleConfirmed || !profile?.selectedRole?.id ? (
+                    <button
+                      type="button"
+                      className="btn dark lg"
+                      disabled={!selectedRoleId || confirmingRole}
+                      onClick={confirmSelectedRole}
+                    >
+                      {confirmingRole
+                        ? 'Saving…'
+                        : selectedRoleId
+                          ? 'Continue with this role →'
+                          : 'Pick a role to continue'}
+                    </button>
+                  ) : (
+                    <p className="mono" style={{ fontSize: 12 }}>
+                      Starting role saved for your roadmap ✳
+                    </p>
+                  )}
+                  {roleConfirmed && profile?.selectedRole?.id && (
+                    <button
+                      type="button"
+                      className="linkish"
+                      onClick={() => {
+                        setRoleConfirmed(false)
+                      }}
+                    >
+                      Change starting role
+                    </button>
+                  )}
+                  <button type="button" className="linkish" onClick={retakeQuiz}>
+                    Take the quiz again
                   </button>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
-            <div className="result-grid">
-              {roleProfile.roles.map((role) => (
-                <section key={role.id} className="mix-panel role-panel">
-                  <p className="eyebrow">{role.name}</p>
-                  <h2>Roles in industry</h2>
-                  <div className="career-list">
-                    {role.careers.map((c) => (
-                      <div key={c.title} className="career-row">
-                        <strong>{c.title}</strong>
-                        <span className={`career-tag ${c.tag === 'pays' ? 'pays' : 'interesting'}`}>
-                          {c.tag === 'pays' ? 'Pays well' : 'Interesting'}
+            {roleConfirmed && chosenRole && (
+              <>
+                <div className="result-grid" style={{ marginTop: 28 }}>
+                  <section className="mix-panel role-panel">
+                    <p className="eyebrow">{chosenRole.name}</p>
+                    <h2>Roles in industry</h2>
+                    <div className="career-list">
+                      {chosenRole.careers.map((c) => (
+                        <div key={c.title} className="career-row">
+                          <strong>{c.title}</strong>
+                          <span
+                            className={`career-tag ${c.tag === 'pays' ? 'pays' : 'interesting'}`}
+                          >
+                            {c.tag === 'pays' ? 'Pays well' : 'Interesting'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="dir-label">Skills to grow</p>
+                    <div className="tags">
+                      {chosenRole.skills.map((s) => (
+                        <span key={s} className="tag">
+                          {s}
                         </span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="waitlist roadmap-lock" id="roadmap">
+                  <div>
+                    <p className="eyebrow">Roadmap · locked</p>
+                    <h2 style={{ fontSize: 'clamp(28px, 5vw, 36px)', margin: '8px 0 12px' }}>
+                      Your {chosenRole.name} path is waiting.
+                      <br />
+                      Unlock it with peers.
+                    </h2>
+                    <p className="muted" style={{ fontSize: 14, maxWidth: '48ch' }}>
+                      Day-by-day micro tasks for {chosenRole.name} unlock when you join the
+                      WhatsApp campus group — connect, ask questions, and grow together.
+                    </p>
                   </div>
-                  <p className="dir-label">Skills to grow</p>
-                  <div className="tags">
-                    {role.skills.map((s) => (
-                      <span key={s} className="tag">
-                        {s}
-                      </span>
-                    ))}
+                  <div className="waitlist-form">
+                    {whatsappUrl ? (
+                      <a
+                        className="btn dark block"
+                        href={whatsappUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={onWhatsAppClick}
+                      >
+                        Join WhatsApp campus group →
+                      </a>
+                    ) : (
+                      <p className="status">
+                        WhatsApp link coming soon — ask your campus lead for the group invite.
+                      </p>
+                    )}
+                    <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
+                      Engage in the group to unlock your roadmap and meet students like you.
+                    </p>
                   </div>
                 </section>
-              ))}
-            </div>
-
-            <section className="waitlist roadmap-lock" id="roadmap">
-              <div>
-                <p className="eyebrow">Roadmap · locked</p>
-                <h2 style={{ fontSize: 'clamp(28px, 5vw, 36px)', margin: '8px 0 12px' }}>
-                  Your path is waiting.
-                  <br />
-                  Unlock it with peers.
-                </h2>
-                <p className="muted" style={{ fontSize: 14, maxWidth: '48ch' }}>
-                  Day-by-day micro tasks for your role unlock when you join the WhatsApp
-                  campus group — connect, ask questions, and grow together.
-                </p>
-              </div>
-              <div className="waitlist-form">
-                {whatsappUrl ? (
-                  <a
-                    className="btn dark block"
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={onWhatsAppClick}
-                  >
-                    Join WhatsApp campus group →
-                  </a>
-                ) : (
-                  <p className="status">
-                    WhatsApp link coming soon — ask your campus lead for the group invite.
-                  </p>
-                )}
-                <p className="muted" style={{ fontSize: 13, marginTop: 10 }}>
-                  Engage in the group to unlock your roadmap and meet students like you.
-                </p>
-              </div>
-            </section>
+              </>
+            )}
           </div>
         </section>
       )}

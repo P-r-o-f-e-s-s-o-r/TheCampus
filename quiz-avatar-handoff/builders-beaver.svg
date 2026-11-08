@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="beaver-title beaver-desc">
+<title id="beaver-title">Beaver avatar – Builders</title><desc id="beaver-desc">A friendly beaver with a flat paddle tail and big front teeth, the Sapiens Campus Builders mascot.</desc><defs><linearGradient id="beaver-y" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe7a0"/><stop offset="1" stop-color="#ffd966"/></linearGradient><linearGradient id="beaver-yd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd966"/><stop offset="1" stop-color="#f0b43c"/></linearGradient><linearGradient id="beaver-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#fff0c8"/></linearGradient></defs>
+<g stroke="#0a0a0a" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
+<ellipse cx="262" cy="452" rx="170" ry="18" fill="#0a0a0a" stroke="none"/>
+
+<path d="M300 420 Q430 440 452 340 Q462 290 420 280 Q360 300 330 380 Z" fill="#3a2a1a"/>
+<path d="M352 352 L428 300 M362 380 L440 330 M340 330 L405 290 M380 405 L446 360" stroke="#ffd966" stroke-width="5"/>
+<path d="M160 440 Q120 330 170 260 Q256 200 340 260 Q390 330 350 440 Z" fill="url(#beaver-yd)"/>
+<path d="M205 440 Q190 350 256 320 Q322 350 307 440 Z" fill="url(#beaver-c)"/>
+<circle cx="168" cy="118" r="26" fill="url(#beaver-yd)"/><circle cx="344" cy="118" r="26" fill="url(#beaver-yd)"/>
+<circle cx="168" cy="118" r="11" fill="#f0b43c" stroke-width="5"/><circle cx="344" cy="118" r="11" fill="#f0b43c" stroke-width="5"/>
+<path d="M256 88 Q370 88 372 196 Q370 280 256 286 Q142 280 140 196 Q142 88 256 88 Z" fill="url(#beaver-y)"/>
+<ellipse cx="256" cy="226" rx="64" ry="46" fill="url(#beaver-c)"/>
+<circle cx="208" cy="174" r="13" fill="#0a0a0a" stroke="none"/><circle cx="212.55" cy="168.8" r="4.55" fill="#fff" stroke="none"/><circle cx="304" cy="174" r="13" fill="#0a0a0a" stroke="none"/><circle cx="308.55" cy="168.8" r="4.55" fill="#fff" stroke="none"/>
+<ellipse cx="256" cy="206" rx="22" ry="14" fill="#0a0a0a"/>
+<path d="M256 220 L256 238 M232 236 Q256 250 280 236" fill="none" stroke-width="6"/>
+<rect x="236" y="240" width="40" height="40" rx="4" fill="#fff"/><path d="M256 240 V280" stroke-width="5"/>
+<ellipse cx="208" cy="356" rx="26" ry="18" fill="url(#beaver-yd)"/><ellipse cx="304" cy="356" rx="26" ry="18" fill="url(#beaver-yd)"/>
+<ellipse cx="200" cy="440" rx="40" ry="16" fill="#3a2a1a"/><ellipse cx="312" cy="440" rx="40" ry="16" fill="#3a2a1a"/>
+</g></svg>

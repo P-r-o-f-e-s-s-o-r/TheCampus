@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="spider-title spider-desc">
+<title id="spider-title">Spider avatar – Planners</title><desc id="spider-desc">A friendly round spider with eight jointed legs and big kind eyes, the Sapiens Campus Planners mascot.</desc><defs><linearGradient id="spider-y" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe7a0"/><stop offset="1" stop-color="#ffd966"/></linearGradient><linearGradient id="spider-yd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd966"/><stop offset="1" stop-color="#f0b43c"/></linearGradient><linearGradient id="spider-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#fff0c8"/></linearGradient></defs>
+<g stroke="#0a0a0a" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
+<ellipse cx="262" cy="452" rx="170" ry="18" fill="#0a0a0a" stroke="none"/>
+
+<g stroke-width="2" opacity=".9"><path d="M256 40 V200" stroke-width="4" stroke-dasharray="2 10"/></g>
+<path d="M216 290 Q120 110 120 150 L70 90" fill="none" stroke-width="12"/><path d="M216 290 Q100 190 100 230 L50 220" fill="none" stroke-width="12"/><path d="M216 290 Q110 260 110 300 L60 350" fill="none" stroke-width="12"/><path d="M216 290 Q140 310 140 350 L110 430" fill="none" stroke-width="12"/><path d="M296 290 Q392 110 392 150 L442 90" fill="none" stroke-width="12"/><path d="M296 290 Q412 190 412 230 L462 220" fill="none" stroke-width="12"/><path d="M296 290 Q402 260 402 300 L452 350" fill="none" stroke-width="12"/><path d="M296 290 Q372 310 372 350 L402 430" fill="none" stroke-width="12"/>
+<ellipse cx="256" cy="340" rx="96" ry="86" fill="url(#spider-yd)"/>
+<path d="M190 316 Q256 296 322 316 M178 358 Q256 336 334 358 M196 398 Q256 382 316 398" fill="none" stroke-width="8"/>
+<circle cx="256" cy="226" r="74" fill="url(#spider-y)"/>
+<circle cx="226" cy="214" r="24" fill="#fff"/><circle cx="286" cy="214" r="24" fill="#fff"/>
+<circle cx="230" cy="216" r="13" fill="#0a0a0a" stroke="none"/><circle cx="234.55" cy="210.8" r="4.55" fill="#fff" stroke="none"/><circle cx="290" cy="216" r="13" fill="#0a0a0a" stroke="none"/><circle cx="294.55" cy="210.8" r="4.55" fill="#fff" stroke="none"/>
+<circle cx="200" cy="176" r="6" fill="#0a0a0a"/><circle cx="312" cy="176" r="6" fill="#0a0a0a"/><circle cx="230" cy="168" r="5" fill="#0a0a0a"/><circle cx="282" cy="168" r="5" fill="#0a0a0a"/>
+<path d="M232 258 Q256 276 280 258" fill="none" stroke-width="7"/>
+</g></svg>

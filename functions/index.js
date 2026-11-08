@@ -524,6 +524,8 @@ router.get("/me", requireStudent, async (req, res) => {
         mobile: data.mobile || "",
         scores: data.scores || null,
         roles: data.roles || [],
+        selectedRole: data.selectedRole || null,
+        scores: data.scores || null,
         hasAnswers: Boolean(data.answers),
         createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null,
@@ -686,30 +688,79 @@ router.post("/me/profile", requireStudent, async (req, res) => {
 
 router.post("/me/discovery", requireStudent, async (req, res) => {
   try {
-    const answers = req.body?.answers;
-    const scores = req.body?.scores;
-    const roles = req.body?.roles;
-    if (!answers || typeof answers !== "object") {
-      return res.status(400).json({ ok: false, error: "answers required" });
-    }
-    if (!scores || typeof scores !== "object") {
-      return res.status(400).json({ ok: false, error: "scores required" });
-    }
     const userRef = USERS.doc(req.student.uid);
     const existing = await userRef.get();
     if (!existing.exists || !existing.data().collegeId) {
-      return res.status(400).json({ ok: false, error: "Complete profile before saving discovery" });
+      return res.status(400).json({
+        ok: false,
+        error: "Complete profile before saving discovery",
+        code: "profile_incomplete",
+      });
     }
-    await userRef.set(
-      {
-        answers,
-        scores,
-        roles: Array.isArray(roles) ? roles : [],
-        updatedAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-    res.json({ ok: true });
+    const existingData = existing.data() || {};
+
+    const roles =
+      Array.isArray(req.body?.roles) && req.body.roles.length
+        ? req.body.roles
+        : Array.isArray(existingData.roles)
+          ? existingData.roles
+          : [];
+    const answers =
+      req.body?.answers && typeof req.body.answers === "object"
+        ? req.body.answers
+        : existingData.answers || null;
+    const scores =
+      req.body?.scores && typeof req.body.scores === "object"
+        ? req.body.scores
+        : existingData.scores || null;
+    const selectedRole = req.body?.selectedRole ?? null;
+
+    if (!answers || typeof answers !== "object") {
+      return res.status(400).json({ ok: false, error: "answers required", code: "answers_required" });
+    }
+    if (!scores || typeof scores !== "object") {
+      return res.status(400).json({ ok: false, error: "scores required", code: "scores_required" });
+    }
+    if (!roles.length) {
+      return res.status(400).json({
+        ok: false,
+        error: "suggested roles required",
+        code: "roles_required",
+      });
+    }
+
+    let normalizedSelected = null;
+    if (selectedRole && typeof selectedRole === "object") {
+      const selectedId = String(selectedRole.id || "").trim();
+      const match = roles.find((r) => r && String(r.id) === selectedId);
+      if (!selectedId || !match) {
+        return res.status(400).json({
+          ok: false,
+          error: "selectedRole must match one of the suggested roles",
+          code: "selected_role_invalid",
+        });
+      }
+      normalizedSelected = {
+        id: match.id,
+        name: match.name || selectedRole.name || "",
+        key: match.key || selectedRole.key || "",
+        score: Number(match.score) || Number(selectedRole.score) || 0,
+        animal: String(selectedRole.animal || "").trim(),
+      };
+    }
+
+    const payload = {
+      answers,
+      scores,
+      roles,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (normalizedSelected) {
+      payload.selectedRole = normalizedSelected;
+    }
+
+    await userRef.set(payload, { merge: true });
+    res.json({ ok: true, selectedRole: normalizedSelected });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to save discovery" });
@@ -1241,6 +1292,7 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
         mobile: data.mobile || "",
         inviteCode: data.inviteCode || "",
         roles: data.roles || [],
+        selectedRole: data.selectedRole || null,
         hasAnswers: Boolean(data.answers),
         createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
       };

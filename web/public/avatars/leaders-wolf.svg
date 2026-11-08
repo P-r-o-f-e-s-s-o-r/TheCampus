@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="wolf-title wolf-desc">
+<title id="wolf-title">Wolf avatar – Leaders</title><desc id="wolf-desc">A confident wolf sitting tall with a thick neck ruff, broad head and long muzzle, the Sapiens Campus Leaders mascot.</desc><defs><linearGradient id="wolf-y" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe7a0"/><stop offset="1" stop-color="#ffd966"/></linearGradient><linearGradient id="wolf-yd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd966"/><stop offset="1" stop-color="#f0b43c"/></linearGradient><linearGradient id="wolf-c" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#fff0c8"/></linearGradient><linearGradient id="wolf-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a7acb6"/><stop offset="1" stop-color="#5e6470"/></linearGradient></defs>
+<g stroke="#0a0a0a" stroke-width="9" stroke-linejoin="round" stroke-linecap="round">
+<ellipse cx="262" cy="452" rx="170" ry="18" fill="#0a0a0a" stroke="none"/>
+
+<path d="M330 430 Q440 420 430 330 Q400 380 340 380 Z" fill="url(#wolf-g)"/>
+<path d="M168 440 Q160 340 196 300 L316 300 Q352 340 344 440 Z" fill="url(#wolf-g)"/>
+<path d="M162 250 L184 300 L170 330 L212 320 L230 360 L256 330 L282 360 L300 320 L342 330 L328 300 L350 250 Z" fill="url(#wolf-c)"/>
+<path d="M152 150 L156 60 L224 106 Z" fill="url(#wolf-g)"/><path d="M360 150 L356 60 L288 106 Z" fill="url(#wolf-g)"/>
+<path d="M166 126 L168 86 L200 108 Z M346 126 L344 86 L312 108 Z" fill="#ffd966" stroke-width="4"/>
+<path d="M256 96 Q366 96 372 176 Q376 236 330 262 L182 262 Q136 236 140 176 Q146 96 256 96 Z" fill="url(#wolf-g)"/>
+<path d="M200 128 L216 112 L232 134 M312 128 L296 112 L280 134" fill="none" stroke="#ffd966" stroke-width="6"/>
+<path d="M212 200 Q256 180 300 200 L306 264 Q256 290 206 264 Z" fill="url(#wolf-c)"/>
+<path d="M192 164 Q208 154 224 162 M320 164 Q304 154 288 162" fill="none" stroke-width="6"/><circle cx="208" cy="184" r="11" fill="#0a0a0a" stroke="none"/><circle cx="211.85" cy="179.6" r="3.8499999999999996" fill="#fff" stroke="none"/><circle cx="304" cy="184" r="11" fill="#0a0a0a" stroke="none"/><circle cx="307.85" cy="179.6" r="3.8499999999999996" fill="#fff" stroke="none"/>
+<path d="M236 208 Q256 200 276 208 Q272 228 256 230 Q240 228 236 208 Z" fill="#0a0a0a"/>
+<path d="M256 230 V246 M234 252 Q256 262 278 252" fill="none" stroke-width="6"/>
+<ellipse cx="210" cy="440" rx="32" ry="14" fill="url(#wolf-c)"/><ellipse cx="302" cy="440" rx="32" ry="14" fill="url(#wolf-c)"/>
+</g></svg>
