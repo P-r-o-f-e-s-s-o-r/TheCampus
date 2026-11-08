@@ -40,6 +40,65 @@ export function scoreAnswers(questions, answers) {
   )
 }
 
+/**
+ * Map RIASEC scores to up to `max` gamified roles (Builders, Hackers, …).
+ * Keeps RIASEC internal; UI should show role names only.
+ */
+export function resolveRoles(scores, roleMap = {}, { max = 2 } = {}) {
+  const sorted = [...RIASEC_KEYS].sort(
+    (a, b) => (Number(scores?.[b]) || 0) - (Number(scores?.[a]) || 0)
+  )
+  const topScore = Number(scores?.[sorted[0]]) || 0
+  if (topScore <= 0) {
+    return {
+      roles: [],
+      mode: 'open',
+      title: 'Still exploring',
+      description:
+        'No strong pull yet — that is useful data. Try a few tiny experiments and come back.',
+      keys: [],
+    }
+  }
+
+  const picked = []
+  for (const key of sorted) {
+    if (picked.length >= max) break
+    const score = Number(scores?.[key]) || 0
+    if (score <= 0) continue
+    if (picked.length === 1 && score < Math.max(3, topScore - 3)) break
+    const meta = roleMap[key]
+    if (!meta) continue
+    picked.push({
+      key,
+      score,
+      id: meta.id || key,
+      name: meta.name || key,
+      color: meta.color || 'cream',
+      icon: meta.icon || 'spark',
+      blurb: meta.blurb || '',
+      careers: Array.isArray(meta.careers) ? meta.careers : [],
+      skills: Array.isArray(meta.skills) ? meta.skills : [],
+    })
+  }
+
+  const title =
+    picked.length === 2
+      ? `${picked[0].name} · ${picked[1].name}`
+      : picked[0]?.name || 'Your mix'
+  const description =
+    picked.length === 2
+      ? `You’re a blend — part ${picked[0].name.toLowerCase()}, part ${picked[1].name.toLowerCase()}. ${picked[0].blurb}`
+      : picked[0]?.blurb || ''
+
+  return {
+    roles: picked,
+    mode: picked.length === 2 ? 'blend' : picked.length === 1 ? 'single' : 'open',
+    title,
+    description,
+    keys: picked.map((r) => r.key),
+  }
+}
+
 export function buildProfile(scores, areas, pairs) {
   const KEYS = RIASEC_KEYS
   const sorted = [...KEYS].sort((a, b) => scores[b] - scores[a])

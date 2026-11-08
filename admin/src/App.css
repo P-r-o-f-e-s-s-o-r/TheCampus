@@ -701,6 +701,131 @@ tbody tr:hover {
   background: var(--mint);
 }
 
+tbody tr.selected {
+  background: #fff4cb;
+}
+
+tbody tr.selected:hover {
+  background: #ffefb0;
+}
+
+.table-check {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--ink);
+  vertical-align: middle;
+  margin: 0;
+}
+
+/* ——— Icon Buttons ——— */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: var(--b);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+  cursor: pointer;
+}
+
+.btn-icon:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink);
+  background: var(--mint);
+}
+
+.btn-icon:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.btn-icon.danger {
+  background: var(--peach);
+}
+
+.btn-icon.danger:hover:not(:disabled) {
+  background: #ff9b8e;
+}
+
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+/* ——— Batch Actions Toolbar ——— */
+.batch-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--paper);
+  border: var(--b);
+  box-shadow: var(--sh);
+}
+
+.batch-toolbar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.batch-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ——— Modal Dialog ——— */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 10, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 16px;
+  backdrop-filter: blur(2px);
+}
+
+.modal-dialog {
+  max-width: 540px;
+  width: 100%;
+}
+
+.modal-dialog .window {
+  box-shadow: var(--shl);
+  background: var(--paper);
+}
+
+.callout {
+  padding: 12px 14px;
+  border: var(--b);
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.callout.yellove {
+  background: var(--cream);
+}
+
 td.email {
   font-weight: 700;
   word-break: break-word;
@@ -875,6 +1000,20 @@ td.email {
   }
 }
 
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stack label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 @media (max-width: 639px) {
   .page-head .sticker {
     display: none;
@@ -889,5 +1028,12 @@ td.email {
     min-height: 36px;
     padding: 6px 10px;
     font-size: 12px;
+  }
+
+  .btn-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
   }
 }

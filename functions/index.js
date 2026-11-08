@@ -26,11 +26,239 @@ const QUESTIONS = db.collection("questions");
 const QUIZ_META = db.collection("quizMeta").doc("config");
 const WAITLIST = db.collection("waitlist");
 const ADMINS = db.collection("admins");
+const INVITE_CODES = db.collection("inviteCodes");
+const COLLEGES = db.collection("colleges");
+const DEPARTMENTS = db.collection("departments");
+const USERS = db.collection("users");
 /** Always-allowed admin Google accounts (in addition to Firestore `admins`). */
 const BOOTSTRAP_ADMIN_EMAILS = new Set(["sapienscampus@gmail.com"]);
 
+const DEFAULT_ROLE_MAP = {
+  R: {
+    id: "builders",
+    name: "Builders",
+    color: "mint",
+    icon: "hammer",
+    blurb: "You like making things real — shipping, prototyping, solving with your hands and head.",
+    careers: [
+      { title: "Developer", tag: "pays" },
+      { title: "Product manager", tag: "interesting" },
+    ],
+    skills: ["Coding", "Prototyping", "Product thinking", "Problem-solving"],
+  },
+  I: {
+    id: "hackers",
+    name: "Hackers",
+    color: "sky",
+    icon: "search",
+    blurb: "You dig into puzzles — why things break, how systems work, what the data is saying.",
+    careers: [
+      { title: "Cybersecurity", tag: "pays" },
+      { title: "Researcher", tag: "interesting" },
+    ],
+    skills: ["Security fundamentals", "Testing & debugging", "Research", "Analytical thinking"],
+  },
+  A: {
+    id: "creators",
+    name: "Creators",
+    color: "lilac",
+    icon: "brush",
+    blurb: "You shape how things look and feel — stories, interfaces, and experiences people remember.",
+    careers: [
+      { title: "UI/UX designer", tag: "pays" },
+      { title: "Social media content", tag: "interesting" },
+    ],
+    skills: ["User research", "Wireframing", "Design philosophies", "Prototyping"],
+  },
+  S: {
+    id: "connectors",
+    name: "Connectors",
+    color: "yellove",
+    icon: "people",
+    blurb: "You bring people together — listening, storytelling, and making rooms feel alive.",
+    careers: [
+      { title: "Public speaker", tag: "interesting" },
+      { title: "Community lead / Influencer", tag: "pays" },
+    ],
+    skills: ["Communication", "Storytelling", "Facilitation", "Community building"],
+  },
+  E: {
+    id: "leaders",
+    name: "Leaders",
+    color: "peach",
+    icon: "flag",
+    blurb: "You spot openings and move people toward them — pitching, deciding, starting.",
+    careers: [
+      { title: "Business development", tag: "pays" },
+      { title: "Founder", tag: "interesting" },
+    ],
+    skills: ["Opportunity spotting", "Pitching", "Decision-making", "Negotiation"],
+  },
+  C: {
+    id: "planners",
+    name: "Planners",
+    color: "mint",
+    icon: "checklist",
+    blurb: "You turn chaos into clarity — plans, processes, budgets, and guardrails that let teams move.",
+    careers: [
+      { title: "Project manager", tag: "pays" },
+      { title: "Risk & AI governance", tag: "interesting" },
+    ],
+    skills: ["Planning & organization", "Budgeting", "Process design", "Risk assessment", "AI guardrails"],
+  },
+};
+
+const DEFAULT_BOOSTS = [
+  {
+    id: "welcome",
+    title: "You’re in.",
+    body: "Discovery here is inspired by Ikigai — the sweet spot where what you love, what you’re good at, what the world needs, and what can pay you start to overlap. Today we start with what pulls you.",
+  },
+  {
+    id: "ikigai-intro",
+    title: "How this works",
+    body: "Ikigai trivia: the word means ‘reason for being.’ You don’t need a perfect answer yet — just honest gut reactions. We’ll turn those into roles you can grow into.",
+  },
+  {
+    id: "mid-1",
+    title: "Nice pace.",
+    body: "Trivia: people who explore interests early often find ‘paid work they enjoy’ faster — not because they pick once, but because they sample more.",
+  },
+  {
+    id: "mid-2",
+    title: "Halfway energy",
+    body: "You’re mapping curiosity, not talent. Ikigai grows when you try tiny experiments — the quiz is your first map.",
+  },
+  {
+    id: "mid-3",
+    title: "Keep going",
+    body: "Trivia: ‘maybe’ is data. Soft yeses often point to skills you can grow into paid roles.",
+  },
+  {
+    id: "mid-4",
+    title: "Almost there",
+    body: "Your mix will become Builders, Hackers, Creators, Connectors, Leaders, or Planners — campus roles, not alphabet soup.",
+  },
+  {
+    id: "mid-5",
+    title: "Last stretch",
+    body: "One more round. Then roles, careers that pay, interesting paths, and a peer group waiting on WhatsApp.",
+  },
+];
+
 function isEmail(value) {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+/** Normalize to 10-digit Indian mobile; returns null if invalid. */
+function normalizeMobile(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  let mobile = digits;
+  if (mobile.length === 12 && mobile.startsWith("91")) {
+    mobile = mobile.slice(2);
+  } else if (mobile.length === 11 && mobile.startsWith("0")) {
+    mobile = mobile.slice(1);
+  }
+  if (!/^[6-9]\d{9}$/.test(mobile)) return null;
+  return mobile;
+}
+
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+}
+
+function normalizeInviteCode(input = {}, existingCode) {
+  const code = String(input.code || existingCode || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  if (!code || code.length < 3) {
+    throw Object.assign(new Error("Invite code must be at least 3 characters"), { status: 400 });
+  }
+  const maxLimit = Number(input.maxLimit);
+  if (!Number.isFinite(maxLimit) || maxLimit < 1) {
+    throw Object.assign(new Error("maxLimit must be a positive number"), { status: 400 });
+  }
+  return {
+    code,
+    label: String(input.label || "").trim(),
+    maxLimit: Math.floor(maxLimit),
+    consumption: Number.isFinite(Number(input.consumption))
+      ? Math.max(0, Math.floor(Number(input.consumption)))
+      : 0,
+    active: input.active !== false,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function normalizeCollege(input = {}, existingId) {
+  const name = String(input.name || "").trim();
+  if (!name) throw Object.assign(new Error("College name is required"), { status: 400 });
+  const id = String(input.id || existingId || slugify(name)).trim();
+  if (!id) throw Object.assign(new Error("College id is required"), { status: 400 });
+  return {
+    id,
+    name,
+    sortOrder: Number.isFinite(Number(input.sortOrder)) ? Number(input.sortOrder) : 0,
+    active: input.active !== false,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+function normalizeDepartment(input = {}, existingId) {
+  const name = String(input.name || "").trim();
+  if (!name) throw Object.assign(new Error("Department name is required"), { status: 400 });
+  const id = String(input.id || existingId || slugify(name)).trim();
+  if (!id) throw Object.assign(new Error("Department id is required"), { status: 400 });
+  return {
+    id,
+    name,
+    sortOrder: Number.isFinite(Number(input.sortOrder)) ? Number(input.sortOrder) : 0,
+    active: input.active !== false,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+}
+
+async function requireStudent(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const match = header.match(/^Bearer\s+(.+)$/i);
+    if (!match) {
+      return res.status(401).json({ ok: false, error: "Missing bearer token" });
+    }
+    const decoded = await auth.verifyIdToken(match[1]);
+    req.student = {
+      uid: decoded.uid,
+      email: (decoded.email || "").toLowerCase(),
+      name: decoded.name || "",
+    };
+    return next();
+  } catch (_err) {
+    return res.status(401).json({ ok: false, error: "Invalid token" });
+  }
+}
+
+async function ensureDiscoveryMeta(meta = {}) {
+  const patch = {};
+  if (!meta.roleMap || typeof meta.roleMap !== "object" || !Object.keys(meta.roleMap).length) {
+    patch.roleMap = DEFAULT_ROLE_MAP;
+  }
+  if (!Array.isArray(meta.boosts) || !meta.boosts.length) {
+    patch.boosts = DEFAULT_BOOSTS;
+  }
+  if (meta.whatsappUrl === undefined) {
+    patch.whatsappUrl = meta.whatsappUrl || "";
+  }
+  if (Object.keys(patch).length) {
+    await QUIZ_META.set({ ...patch, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { ...meta, ...patch };
+  }
+  return meta;
 }
 
 function normalizeQuestion(input = {}, existingId) {
@@ -65,6 +293,9 @@ function packFromDocs(meta, questions) {
       { value: 1, label: "Maybe", detail: "Open to trying", face: "maybe", color: "paper" },
       { value: 2, label: "I’d love it", detail: "Count me in", face: "love", color: "green" },
     ],
+    roleMap: meta?.roleMap && Object.keys(meta.roleMap).length ? meta.roleMap : DEFAULT_ROLE_MAP,
+    boosts: Array.isArray(meta?.boosts) && meta.boosts.length ? meta.boosts : DEFAULT_BOOSTS,
+    whatsappUrl: String(meta?.whatsappUrl || ""),
     questions: questions
       .map((doc) => ({ id: doc.id, ...doc.data() }))
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
@@ -110,6 +341,9 @@ async function seedFromTemplateIfEmpty() {
       areas: pack.areas,
       pairs: pack.pairs,
       anchors: pack.anchors,
+      roleMap: DEFAULT_ROLE_MAP,
+      boosts: DEFAULT_BOOSTS,
+      whatsappUrl: "",
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true }
@@ -147,7 +381,8 @@ router.get("/questions", async (_req, res) => {
       QUIZ_META.get(),
       QUESTIONS.where("active", "==", true).get(),
     ]);
-    const pack = packFromDocs(metaSnap.data(), questionSnap.docs);
+    const meta = await ensureDiscoveryMeta(metaSnap.data() || {});
+    const pack = packFromDocs(meta, questionSnap.docs);
     if (!pack.questions.length) {
       return res.status(503).json({ ok: false, error: "Questions are not seeded yet" });
     }
@@ -157,6 +392,9 @@ router.get("/questions", async (_req, res) => {
       areas: pack.areas,
       pairs: pack.pairs,
       anchors: pack.anchors,
+      roleMap: pack.roleMap,
+      boosts: pack.boosts,
+      whatsappUrl: pack.whatsappUrl,
       questions: pack.questions.map(({ id, area, title, cue, icon, scene, sortOrder }) => ({
         id,
         area,
@@ -170,6 +408,311 @@ router.get("/questions", async (_req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to load questions" });
+  }
+});
+
+router.post("/invites/check", async (req, res) => {
+  try {
+    const code = String(req.body?.code || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    if (!code) {
+      return res.status(400).json({ ok: false, error: "Invite code required" });
+    }
+    const snap = await INVITE_CODES.doc(code).get();
+    if (!snap.exists) {
+      return res.status(404).json({ ok: false, error: "Invalid invite code" });
+    }
+    const data = snap.data();
+    if (data.active === false) {
+      return res.status(400).json({ ok: false, error: "This invite code is inactive" });
+    }
+    const consumption = Number(data.consumption) || 0;
+    const maxLimit = Number(data.maxLimit) || 0;
+    if (consumption >= maxLimit) {
+      return res.status(400).json({ ok: false, error: "This invite code is fully used" });
+    }
+    res.json({
+      ok: true,
+      code,
+      label: data.label || "",
+      remaining: maxLimit - consumption,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to check invite" });
+  }
+});
+
+router.get("/colleges", async (_req, res) => {
+  try {
+    const [collegeSnap, deptSnap, metaSnap] = await Promise.all([
+      COLLEGES.get(),
+      DEPARTMENTS.get(),
+      QUIZ_META.get(),
+    ]);
+    const meta = await ensureDiscoveryMeta(metaSnap.data() || {});
+    const departments = deptSnap.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          sortOrder: data.sortOrder ?? 0,
+          active: data.active !== false,
+        };
+      })
+      .filter((d) => d.active)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name));
+    const colleges = collegeSnap.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          sortOrder: data.sortOrder ?? 0,
+          active: data.active !== false,
+        };
+      })
+      .filter((c) => c.active)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name));
+
+    res.json({
+      ok: true,
+      colleges,
+      departments,
+      whatsappUrl: String(meta.whatsappUrl || ""),
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to list colleges" });
+  }
+});
+
+router.get("/colleges/:id/stats", async (req, res) => {
+  try {
+    const collegeId = String(req.params.id || "").trim();
+    if (!collegeId) {
+      return res.status(400).json({ ok: false, error: "College id required" });
+    }
+    const snap = await USERS.where("collegeId", "==", collegeId).count().get();
+    res.json({ ok: true, collegeId, signedUpCount: snap.data().count || 0 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to load college stats" });
+  }
+});
+
+router.get("/me", requireStudent, async (req, res) => {
+  try {
+    const snap = await USERS.doc(req.student.uid).get();
+    if (!snap.exists) {
+      return res.json({ ok: true, user: null });
+    }
+    const data = snap.data();
+    res.json({
+      ok: true,
+      user: {
+        uid: snap.id,
+        email: data.email || req.student.email,
+        displayName: data.displayName || "",
+        inviteCode: data.inviteCode || "",
+        collegeId: data.collegeId || "",
+        departmentId: data.departmentId || "",
+        passoutYear: data.passoutYear || null,
+        mobile: data.mobile || "",
+        scores: data.scores || null,
+        roles: data.roles || [],
+        hasAnswers: Boolean(data.answers),
+        createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
+        updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to load profile" });
+  }
+});
+
+router.post("/me/profile", requireStudent, async (req, res) => {
+  try {
+    const inviteCode = String(req.body?.inviteCode || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+    const collegeId = String(req.body?.collegeId || "").trim();
+    const departmentId = String(req.body?.departmentId || "").trim();
+    const passoutYear = Number(req.body?.passoutYear);
+    const displayName = String(req.body?.displayName || req.student.name || "").trim();
+    const mobile = normalizeMobile(req.body?.mobile);
+
+    if (!inviteCode) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invite code missing — enter the code you unlocked with",
+        code: "invite_required",
+      });
+    }
+    if (!collegeId) {
+      return res.status(400).json({ ok: false, error: "College required", code: "college_required" });
+    }
+    if (!departmentId) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Department required", code: "department_required" });
+    }
+    if (!Number.isFinite(passoutYear) || passoutYear < 2028 || passoutYear > 2040) {
+      return res.status(400).json({
+        ok: false,
+        error: "Valid passout year required (2028+)",
+        code: "passout_invalid",
+      });
+    }
+    if (!mobile) {
+      return res.status(400).json({
+        ok: false,
+        error: "Enter a valid 10-digit mobile number (same number used in campus WhatsApp)",
+        code: "mobile_invalid",
+      });
+    }
+
+    const [collegeSnap, deptSnap] = await Promise.all([
+      COLLEGES.doc(collegeId).get(),
+      DEPARTMENTS.doc(departmentId).get(),
+    ]);
+    if (!collegeSnap.exists || collegeSnap.data().active === false) {
+      return res.status(400).json({ ok: false, error: "Unknown college", code: "college_unknown" });
+    }
+    if (!deptSnap.exists || deptSnap.data().active === false) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Unknown department", code: "department_unknown" });
+    }
+
+    const userRef = USERS.doc(req.student.uid);
+    const inviteRef = INVITE_CODES.doc(inviteCode);
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const userSnap = await tx.get(userRef);
+        const inviteSnap = await tx.get(inviteRef);
+        const existing = userSnap.exists ? userSnap.data() : null;
+        const alreadyBound =
+          existing?.inviteCode && String(existing.inviteCode).toUpperCase() === inviteCode;
+
+        if (!alreadyBound) {
+          if (!inviteSnap.exists) {
+            const e = new Error("Invalid invite code — unlock again with a valid code");
+            e.status = 404;
+            e.code = "invite_invalid";
+            throw e;
+          }
+          const invite = inviteSnap.data();
+          if (invite.active === false) {
+            const e = new Error("This invite code is inactive");
+            e.status = 400;
+            e.code = "invite_inactive";
+            throw e;
+          }
+          const consumption = Number(invite.consumption) || 0;
+          const maxLimit = Number(invite.maxLimit) || 0;
+          if (consumption >= maxLimit) {
+            const e = new Error("This invite code is fully used — ask for a new code");
+            e.status = 400;
+            e.code = "invite_exhausted";
+            throw e;
+          }
+          tx.set(
+            inviteRef,
+            {
+              consumption: consumption + 1,
+              updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+
+        tx.set(
+          userRef,
+          {
+            email: req.student.email || "",
+            displayName,
+            inviteCode,
+            collegeId,
+            departmentId,
+            passoutYear: Math.floor(passoutYear),
+            mobile,
+            updatedAt: FieldValue.serverTimestamp(),
+            ...(userSnap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+          },
+          { merge: true }
+        );
+      });
+    } catch (txErr) {
+      const status = txErr.status || 500;
+      const message = txErr.message || "Failed to save profile";
+      const code = txErr.code || "profile_save_failed";
+      console.error("profile transaction failed", { status, code, message, inviteCode, collegeId });
+      return res.status(status).json({ ok: false, error: message, code });
+    }
+
+    const saved = await userRef.get();
+    const savedData = saved.data() || {};
+    res.json({
+      ok: true,
+      user: {
+        uid: saved.id,
+        email: savedData.email || req.student.email,
+        displayName: savedData.displayName || "",
+        inviteCode: savedData.inviteCode || "",
+        collegeId: savedData.collegeId || "",
+        departmentId: savedData.departmentId || "",
+        passoutYear: savedData.passoutYear || null,
+        mobile: savedData.mobile || "",
+        roles: savedData.roles || [],
+        hasAnswers: Boolean(savedData.answers),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({
+      ok: false,
+      error: err.message || "Failed to save profile",
+      code: err.code || "profile_save_failed",
+    });
+  }
+});
+
+router.post("/me/discovery", requireStudent, async (req, res) => {
+  try {
+    const answers = req.body?.answers;
+    const scores = req.body?.scores;
+    const roles = req.body?.roles;
+    if (!answers || typeof answers !== "object") {
+      return res.status(400).json({ ok: false, error: "answers required" });
+    }
+    if (!scores || typeof scores !== "object") {
+      return res.status(400).json({ ok: false, error: "scores required" });
+    }
+    const userRef = USERS.doc(req.student.uid);
+    const existing = await userRef.get();
+    if (!existing.exists || !existing.data().collegeId) {
+      return res.status(400).json({ ok: false, error: "Complete profile before saving discovery" });
+    }
+    await userRef.set(
+      {
+        answers,
+        scores,
+        roles: Array.isArray(roles) ? roles : [],
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to save discovery" });
   }
 });
 
@@ -254,6 +797,16 @@ router.get("/admin/questions", requireAdmin, async (_req, res) => {
 router.post("/admin/questions", requireAdmin, async (req, res) => {
   try {
     const question = normalizeQuestion(req.body);
+    const existing = await QUESTIONS.doc(question.id).get();
+    if (!existing.exists) {
+      const countSnap = await QUESTIONS.count().get();
+      if (countSnap.data().count >= 90) {
+        return res.status(400).json({
+          ok: false,
+          error: "Maximum limit of 90 questions reached. Delete questions before adding new ones.",
+        });
+      }
+    }
     question.createdAt = FieldValue.serverTimestamp();
     await QUESTIONS.doc(question.id).set(question, { merge: true });
     res.status(201).json({ ok: true, question });
@@ -288,6 +841,30 @@ router.delete("/admin/questions/:id", requireAdmin, async (req, res) => {
     res.json({ ok: true });
   } catch (_err) {
     res.status(500).json({ ok: false, error: "Delete failed" });
+  }
+});
+
+router.post("/admin/questions/batch-delete", requireAdmin, async (req, res) => {
+  try {
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || !ids.length) {
+      return res.status(400).json({ ok: false, error: "ids array required" });
+    }
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 400) {
+      chunks.push(ids.slice(i, i + 400));
+    }
+    for (const chunk of chunks) {
+      const batch = db.batch();
+      chunk.forEach((id) => {
+        batch.delete(QUESTIONS.doc(String(id)));
+      });
+      await batch.commit();
+    }
+    res.json({ ok: true, deleted: ids.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Batch delete failed" });
   }
 });
 
@@ -328,8 +905,63 @@ router.get("/admin/questions/export", requireAdmin, async (_req, res) => {
 router.post("/admin/questions/import", requireAdmin, async (req, res) => {
   try {
     const pack = req.body?.pack || req.body;
+    const overwrite = req.body?.overwrite !== false;
     if (!pack || !Array.isArray(pack.questions)) {
       return res.status(400).json({ ok: false, error: "pack.questions array required" });
+    }
+
+    const existingSnap = await QUESTIONS.get();
+    const existingDocs = new Map(existingSnap.docs.map((doc) => [doc.id, doc.data()]));
+
+    // Start with existing questions in the database
+    const resultMap = new Map();
+    existingDocs.forEach((data, id) => {
+      resultMap.set(id, { ...data, id });
+    });
+
+    // Merge/append imported questions
+    for (let index = 0; index < pack.questions.length; index++) {
+      const raw = pack.questions[index];
+      const question = normalizeQuestion({
+        ...raw,
+        sortOrder: raw.sortOrder ?? index,
+      });
+
+      if (!resultMap.has(question.id) || overwrite) {
+        resultMap.set(question.id, question);
+      }
+    }
+
+    const resultingQuestions = Array.from(resultMap.values());
+
+    // 1. Validate max 90 limit
+    if (resultingQuestions.length > 90) {
+      return res.status(400).json({
+        ok: false,
+        error: `Total questions cannot exceed 90 (currently at ${existingDocs.size}, resulting total would be ${resultingQuestions.length}). Please delete some questions first.`,
+      });
+    }
+
+    // 2. Validate equal distribution across all 6 RIASEC types
+    const counts = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 };
+    for (const q of resultingQuestions) {
+      if (counts[q.area] === undefined) {
+        return res.status(400).json({
+          ok: false,
+          error: `Invalid area "${q.area}" in question ${q.id}. Must be one of R, I, A, S, E, C.`,
+        });
+      }
+      counts[q.area] += 1;
+    }
+
+    const countValues = Object.values(counts);
+    const targetCount = countValues[0];
+    const isBalanced = countValues.every((c) => c === targetCount);
+    if (!isBalanced) {
+      return res.status(400).json({
+        ok: false,
+        error: `All 6 RIASEC types must have an equal number of questions. Current resulting distribution: R: ${counts.R}, I: ${counts.I}, A: ${counts.A}, S: ${counts.S}, E: ${counts.E}, C: ${counts.C}. Every type must have the exact same count.`,
+      });
     }
 
     const batch = db.batch();
@@ -345,23 +977,278 @@ router.post("/admin/questions/import", requireAdmin, async (req, res) => {
       { merge: true }
     );
 
-    const existing = await QUESTIONS.get();
-    existing.docs.forEach((doc) => batch.delete(doc.ref));
-
-    pack.questions.forEach((raw, index) => {
-      const question = normalizeQuestion({
-        ...raw,
-        sortOrder: raw.sortOrder ?? index,
-      });
-      question.createdAt = FieldValue.serverTimestamp();
-      batch.set(QUESTIONS.doc(question.id), question);
+    resultingQuestions.forEach((q, index) => {
+      q.sortOrder = q.sortOrder ?? index;
+      q.updatedAt = FieldValue.serverTimestamp();
+      if (!q.createdAt) {
+        q.createdAt = FieldValue.serverTimestamp();
+      }
+      batch.set(QUESTIONS.doc(q.id), q);
     });
 
     await batch.commit();
-    res.json({ ok: true, imported: pack.questions.length });
+    res.json({
+      ok: true,
+      imported: pack.questions.length,
+      total: resultingQuestions.length,
+      perType: targetCount,
+    });
   } catch (err) {
     console.error(err);
     res.status(err.status || 500).json({ ok: false, error: err.message || "Import failed" });
+  }
+});
+
+// --- Admin: invites ---
+router.get("/admin/invites", requireAdmin, async (_req, res) => {
+  try {
+    const snap = await INVITE_CODES.get();
+    const invites = snap.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          code: doc.id,
+          label: data.label || "",
+          maxLimit: data.maxLimit || 0,
+          consumption: data.consumption || 0,
+          active: data.active !== false,
+          createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
+          updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null,
+        };
+      })
+      .sort((a, b) => a.code.localeCompare(b.code));
+    res.json({ ok: true, invites });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to list invites" });
+  }
+});
+
+router.post("/admin/invites", requireAdmin, async (req, res) => {
+  try {
+    const invite = normalizeInviteCode(req.body);
+    const ref = INVITE_CODES.doc(invite.code);
+    const existing = await ref.get();
+    if (existing.exists) {
+      return res.status(409).json({ ok: false, error: "Invite code already exists" });
+    }
+    await ref.set({
+      ...invite,
+      consumption: 0,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    res.status(201).json({ ok: true, invite: { ...invite, consumption: 0 } });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "Create failed" });
+  }
+});
+
+router.put("/admin/invites/:code", requireAdmin, async (req, res) => {
+  try {
+    const code = String(req.params.code || "")
+      .trim()
+      .toUpperCase();
+    const ref = INVITE_CODES.doc(code);
+    const existing = await ref.get();
+    if (!existing.exists) {
+      return res.status(404).json({ ok: false, error: "Invite not found" });
+    }
+    const current = existing.data();
+    const invite = normalizeInviteCode(
+      {
+        ...req.body,
+        code,
+        consumption:
+          req.body?.consumption !== undefined ? req.body.consumption : current.consumption,
+      },
+      code
+    );
+    await ref.set(invite, { merge: true });
+    res.json({ ok: true, invite });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "Update failed" });
+  }
+});
+
+router.delete("/admin/invites/:code", requireAdmin, async (req, res) => {
+  try {
+    const code = String(req.params.code || "")
+      .trim()
+      .toUpperCase();
+    const ref = INVITE_CODES.doc(code);
+    const existing = await ref.get();
+    if (!existing.exists) {
+      return res.status(404).json({ ok: false, error: "Invite not found" });
+    }
+    await ref.set({ active: false, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    res.json({ ok: true });
+  } catch (_err) {
+    res.status(500).json({ ok: false, error: "Deactivate failed" });
+  }
+});
+
+// --- Admin: colleges & departments ---
+router.get("/admin/colleges", requireAdmin, async (_req, res) => {
+  try {
+    const [collegeSnap, deptSnap] = await Promise.all([COLLEGES.get(), DEPARTMENTS.get()]);
+    const departments = deptSnap.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          sortOrder: data.sortOrder ?? 0,
+          active: data.active !== false,
+          createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.name).localeCompare(String(b.name))
+      );
+    const colleges = collegeSnap.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          name: data.name,
+          sortOrder: data.sortOrder ?? 0,
+          active: data.active !== false,
+          createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
+        };
+      })
+      .sort(
+        (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name)
+      );
+    res.json({ ok: true, colleges, departments });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to list colleges" });
+  }
+});
+
+router.post("/admin/colleges", requireAdmin, async (req, res) => {
+  try {
+    const college = normalizeCollege(req.body);
+    const ref = COLLEGES.doc(college.id);
+    const existing = await ref.get();
+    if (existing.exists) {
+      return res.status(409).json({ ok: false, error: "College id already exists" });
+    }
+    await ref.set({ ...college, createdAt: FieldValue.serverTimestamp() });
+    res.status(201).json({ ok: true, college });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "Create failed" });
+  }
+});
+
+router.put("/admin/colleges/:id", requireAdmin, async (req, res) => {
+  try {
+    const college = normalizeCollege({ ...req.body, id: req.params.id }, req.params.id);
+    const ref = COLLEGES.doc(college.id);
+    const existing = await ref.get();
+    if (!existing.exists) {
+      return res.status(404).json({ ok: false, error: "College not found" });
+    }
+    await ref.set(college, { merge: true });
+    res.json({ ok: true, college });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "Update failed" });
+  }
+});
+
+router.post("/admin/departments", requireAdmin, async (req, res) => {
+  try {
+    const department = normalizeDepartment(req.body);
+    const ref = DEPARTMENTS.doc(department.id);
+    const existing = await ref.get();
+    if (existing.exists) {
+      return res.status(409).json({ ok: false, error: "Department id already exists" });
+    }
+    await ref.set({ ...department, createdAt: FieldValue.serverTimestamp() });
+    res.status(201).json({ ok: true, department });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "Create failed" });
+  }
+});
+
+router.put("/admin/departments/:id", requireAdmin, async (req, res) => {
+  try {
+    const department = normalizeDepartment({ ...req.body, id: req.params.id }, req.params.id);
+    const ref = DEPARTMENTS.doc(department.id);
+    const existing = await ref.get();
+    if (!existing.exists) {
+      return res.status(404).json({ ok: false, error: "Department not found" });
+    }
+    await ref.set(department, { merge: true });
+    res.json({ ok: true, department });
+  } catch (err) {
+    res.status(err.status || 500).json({ ok: false, error: err.message || "Update failed" });
+  }
+});
+
+router.get("/admin/campus", requireAdmin, async (_req, res) => {
+  try {
+    const metaSnap = await QUIZ_META.get();
+    const meta = await ensureDiscoveryMeta(metaSnap.data() || {});
+    res.json({
+      ok: true,
+      campus: {
+        whatsappUrl: String(meta.whatsappUrl || ""),
+        boosts: meta.boosts || DEFAULT_BOOSTS,
+        roleMap: meta.roleMap || DEFAULT_ROLE_MAP,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to load campus config" });
+  }
+});
+
+router.put("/admin/campus", requireAdmin, async (req, res) => {
+  try {
+    const whatsappUrl = String(req.body?.whatsappUrl || "").trim();
+    const patch = {
+      whatsappUrl,
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    if (Array.isArray(req.body?.boosts)) {
+      patch.boosts = req.body.boosts;
+    }
+    if (req.body?.roleMap && typeof req.body.roleMap === "object") {
+      patch.roleMap = req.body.roleMap;
+    }
+    await QUIZ_META.set(patch, { merge: true });
+    res.json({ ok: true, campus: { whatsappUrl, boosts: patch.boosts, roleMap: patch.roleMap } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to update campus config" });
+  }
+});
+
+router.get("/admin/users", requireAdmin, async (_req, res) => {
+  try {
+    const snap = await USERS.orderBy("createdAt", "desc").limit(500).get();
+    const users = snap.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        email: data.email,
+        displayName: data.displayName || "",
+        collegeId: data.collegeId || "",
+        departmentId: data.departmentId || "",
+        passoutYear: data.passoutYear || null,
+        mobile: data.mobile || "",
+        inviteCode: data.inviteCode || "",
+        roles: data.roles || [],
+        hasAnswers: Boolean(data.answers),
+        createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
+      };
+    });
+    res.json({ ok: true, users });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "Failed to list users" });
   }
 });
 

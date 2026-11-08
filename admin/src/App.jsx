@@ -1,16 +1,69 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth'
 import { ADMIN_EMAIL, auth, googleProvider } from './firebase'
 import {
+  batchDeleteQuestions,
+  createCollege,
+  createDepartment,
+  createInvite,
   createQuestion,
+  deactivateInvite,
   deleteQuestion,
   exportQuestions,
+  getCampus,
   importQuestions,
+  listColleges,
+  listInvites,
   listQuestions,
   listWaitlist,
+  updateCampus,
+  updateCollege,
+  updateDepartment,
+  updateInvite,
   updateQuestion,
 } from './api'
 import './App.css'
+
+function EditIcon({ size = 15 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </svg>
+  )
+}
+
+function TrashIcon({ size = 15 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18" />
+      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  )
+}
 
 const EMPTY_QUESTION = {
   id: '',
@@ -120,6 +173,28 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [waitlist, setWaitlist] = useState([])
   const [pack, setPack] = useState(null)
+  const [invites, setInvites] = useState([])
+  const [colleges, setColleges] = useState([])
+  const [departments, setDepartments] = useState([])
+  const [campus, setCampus] = useState({ whatsappUrl: '' })
+  const [inviteForm, setInviteForm] = useState({
+    code: '',
+    label: '',
+    maxLimit: 50,
+    active: true,
+  })
+  const [collegeForm, setCollegeForm] = useState({
+    name: '',
+    sortOrder: 0,
+    active: true,
+  })
+  const [deptForm, setDeptForm] = useState({
+    name: '',
+    sortOrder: 0,
+    active: true,
+  })
+  const [selectedIds, setSelectedIds] = useState([])
+  const [importPrompt, setImportPrompt] = useState(null)
   const [form, setForm] = useState(EMPTY_QUESTION)
   const [editingId, setEditingId] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -146,10 +221,69 @@ export default function App() {
     []
   )
 
+  const refresh = useCallback(async () => {
+    setError('')
+    try {
+      if (tab === 'waitlist') {
+        const data = await listWaitlist()
+        setWaitlist(data.entries || [])
+      } else if (tab === 'questions') {
+        const data = await listQuestions()
+        setPack(data.pack)
+      } else if (tab === 'invites') {
+        const data = await listInvites()
+        setInvites(data.invites || [])
+      } else if (tab === 'colleges') {
+        const data = await listColleges()
+        setColleges(data.colleges || [])
+        setDepartments(data.departments || [])
+      } else if (tab === 'campus') {
+        const data = await getCampus()
+        setCampus(data.campus || { whatsappUrl: '' })
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [tab])
+
   useEffect(() => {
     if (!user) return
-    refresh()
+    let active = true
+    async function load() {
+      try {
+        if (tab === 'waitlist') {
+          const data = await listWaitlist()
+          if (active) setWaitlist(data.entries || [])
+        } else if (tab === 'questions') {
+          const data = await listQuestions()
+          if (active) setPack(data.pack)
+        } else if (tab === 'invites') {
+          const data = await listInvites()
+          if (active) setInvites(data.invites || [])
+        } else if (tab === 'colleges') {
+          const data = await listColleges()
+          if (active) {
+            setColleges(data.colleges || [])
+            setDepartments(data.departments || [])
+          }
+        } else if (tab === 'campus') {
+          const data = await getCampus()
+          if (active) setCampus(data.campus || { whatsappUrl: '' })
+        }
+      } catch (err) {
+        if (active) setError(err.message)
+      }
+    }
+    load()
+    return () => {
+      active = false
+    }
   }, [user, tab])
+
+  const selectedInPack = useMemo(() => {
+    const valid = new Set((pack?.questions || []).map((q) => q.id))
+    return selectedIds.filter((id) => valid.has(id))
+  }, [pack, selectedIds])
 
   const waitlistWithAnswers = useMemo(
     () => waitlist.filter((row) => row.hasAnswers).length,
@@ -160,21 +294,6 @@ export default function App() {
     () => (pack?.questions || []).filter((q) => q.active !== false).length,
     [pack]
   )
-
-  async function refresh() {
-    setError('')
-    try {
-      if (tab === 'waitlist') {
-        const data = await listWaitlist()
-        setWaitlist(data.entries || [])
-      } else {
-        const data = await listQuestions()
-        setPack(data.pack)
-      }
-    } catch (err) {
-      setError(err.message)
-    }
-  }
 
   async function onGoogleSignIn() {
     setError('')
@@ -200,7 +319,181 @@ export default function App() {
     setMenuOpen(false)
     setMessage('')
     setError('')
+    setSelectedIds([])
     closeForm()
+  }
+
+  async function onCreateInvite(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await createInvite({
+        code: inviteForm.code,
+        label: inviteForm.label,
+        maxLimit: Number(inviteForm.maxLimit),
+        active: inviteForm.active !== false,
+      })
+      setInviteForm({ code: '', label: '', maxLimit: 50, active: true })
+      setMessage('Invite code created')
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onToggleInvite(invite) {
+    setBusy(true)
+    setError('')
+    try {
+      if (invite.active === false) {
+        await updateInvite(invite.code, {
+          ...invite,
+          active: true,
+        })
+        setMessage(`Reactivated ${invite.code}`)
+      } else {
+        await deactivateInvite(invite.code)
+        setMessage(`Deactivated ${invite.code}`)
+      }
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onUpdateInviteLimit(invite, maxLimit) {
+    setBusy(true)
+    setError('')
+    try {
+      await updateInvite(invite.code, { ...invite, maxLimit: Number(maxLimit) })
+      setMessage(`Updated limit for ${invite.code}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onCreateCollege(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await createCollege(collegeForm)
+      setCollegeForm({ name: '', sortOrder: 0, active: true })
+      setMessage('College created')
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onToggleCollege(college) {
+    setBusy(true)
+    setError('')
+    try {
+      await updateCollege(college.id, {
+        ...college,
+        active: college.active === false,
+      })
+      setMessage(`Updated ${college.name}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onCreateDepartment(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await createDepartment(deptForm)
+      setDeptForm({ name: '', sortOrder: 0, active: true })
+      setMessage('Department created')
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onToggleDepartment(dept) {
+    setBusy(true)
+    setError('')
+    try {
+      await updateDepartment(dept.id, { ...dept, active: dept.active === false })
+      setMessage(`Updated ${dept.name}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onSaveCampus(e) {
+    e.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await updateCampus({ whatsappUrl: campus.whatsappUrl || '' })
+      setMessage('Campus WhatsApp URL saved')
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pageMeta = {
+    waitlist: {
+      mono: 'Students',
+      title: 'Waitlist',
+      desc: 'Everyone who joined the campus waitlist — emails, scores, and answer status.',
+      sticker: 'Live list ✳',
+    },
+    questions: {
+      mono: 'RIASEC pack',
+      title: 'Questions',
+      desc: 'Create, edit, import and export the question pack that powers discovery.',
+      sticker: 'Pack editor ✳',
+    },
+    invites: {
+      mono: 'Access',
+      title: 'Invite codes',
+      desc: 'Campus/batch invite codes with max limit and current consumption.',
+      sticker: 'Gate ✳',
+    },
+    colleges: {
+      mono: 'Directory',
+      title: 'Colleges & departments',
+      desc: 'Independent lists of college names and department names for student signup.',
+      sticker: 'Campus map ✳',
+    },
+    campus: {
+      mono: 'Config',
+      title: 'Campus',
+      desc: 'Global WhatsApp campus group link for the locked roadmap CTA.',
+      sticker: 'Connect ✳',
+    },
+  }[tab] || {
+    mono: 'Admin',
+    title: 'Admin',
+    desc: '',
+    sticker: '✳',
   }
 
   function closeForm() {
@@ -210,6 +503,12 @@ export default function App() {
   }
 
   function startCreate() {
+    if ((pack?.questions || []).length >= 90) {
+      setError(
+        'Maximum limit of 90 questions reached. Delete a few questions before creating new ones.'
+      )
+      return
+    }
     setEditingId(null)
     setForm(EMPTY_QUESTION)
     setFormOpen(true)
@@ -218,8 +517,29 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  function toggleSelect(id) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    )
+  }
+
+  function toggleSelectAll() {
+    const list = pack?.questions || []
+    if (selectedInPack.length === list.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(list.map((q) => q.id))
+    }
+  }
+
   async function saveQuestion(e) {
     e.preventDefault()
+    if (!editingId && (pack?.questions || []).length >= 90) {
+      setError(
+        'Maximum limit of 90 questions reached. Delete a few questions before adding new ones.'
+      )
+      return
+    }
     setBusy(true)
     setMessage('')
     setError('')
@@ -240,9 +560,43 @@ export default function App() {
   async function onDelete(id) {
     if (!confirm(`Delete question ${id}?`)) return
     setBusy(true)
+    setMessage('')
+    setError('')
     try {
       await deleteQuestion(id)
+      setSelectedIds((prev) => prev.filter((item) => item !== id))
+      if (editingId === id) closeForm()
       setMessage(`Deleted ${id}`)
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onBatchDelete() {
+    if (!selectedInPack.length) return
+    const count = selectedInPack.length
+    if (
+      !confirm(
+        `Are you sure you want to delete ${count} question${
+          count > 1 ? 's' : ''
+        }? This cannot be undone.`
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    setMessage('')
+    setError('')
+    try {
+      const res = await batchDeleteQuestions(selectedInPack)
+      if (editingId && selectedInPack.includes(editingId)) {
+        closeForm()
+      }
+      setSelectedIds([])
+      setMessage(`Deleted ${res.deleted ?? count} question${count > 1 ? 's' : ''}`)
       await refresh()
     } catch (err) {
       setError(err.message)
@@ -272,19 +626,163 @@ export default function App() {
   async function onImport(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    setBusy(true)
     setError('')
+    setMessage('')
     try {
       const text = await file.text()
-      const json = JSON.parse(text)
-      const result = await importQuestions(json.pack || json)
-      setMessage(`Imported ${result.imported} questions`)
+      let json
+      try {
+        json = JSON.parse(text)
+      } catch {
+        throw new Error('Invalid JSON file format.')
+      }
+
+      const rawPack = json.pack || json
+      const importedList = Array.isArray(rawPack)
+        ? rawPack
+        : Array.isArray(rawPack?.questions)
+        ? rawPack.questions
+        : null
+
+      if (!importedList || !importedList.length) {
+        throw new Error(
+          'File must contain a questions array (e.g. { "questions": [...] }).'
+        )
+      }
+
+      const seenIds = new Set()
+      const normalizedList = []
+      for (let i = 0; i < importedList.length; i++) {
+        const item = importedList[i]
+        const id = String(item.id || '').trim()
+        const area = String(item.area || '').trim().toUpperCase()
+        const title = String(item.title || '').trim()
+
+        if (!id) {
+          throw new Error(`Question #${i + 1} is missing an "id" field.`)
+        }
+        if (seenIds.has(id)) {
+          throw new Error(
+            `Duplicate question ID "${id}" found within the imported file.`
+          )
+        }
+        seenIds.add(id)
+
+        if (!/^[RIASEC]$/.test(area)) {
+          throw new Error(
+            `Question "${id}" has invalid area "${item.area}". Must be one of R, I, A, S, E, C.`
+          )
+        }
+        if (!title) {
+          throw new Error(`Question "${id}" is missing a "title" field.`)
+        }
+
+        normalizedList.push({
+          ...item,
+          id,
+          area,
+          title,
+          cue: String(item.cue || '').trim(),
+          icon: String(item.icon || 'spark').trim(),
+          scene: String(item.scene || '').trim(),
+          sortOrder: Number.isFinite(Number(item.sortOrder))
+            ? Number(item.sortOrder)
+            : i,
+          active: item.active !== false,
+        })
+      }
+
+      const currentQuestions = pack?.questions || []
+      const currentMap = new Map(currentQuestions.map((q) => [q.id, q]))
+      const matchingIds = normalizedList
+        .map((q) => q.id)
+        .filter((id) => currentMap.has(id))
+      const newQuestions = normalizedList.filter((q) => !currentMap.has(q.id))
+
+      const promptData = {
+        rawPack,
+        importedList: normalizedList,
+        matchingIds,
+        newQuestions,
+        currentQuestions,
+      }
+
+      if (matchingIds.length > 0) {
+        setImportPrompt(promptData)
+      } else {
+        await executeImport(promptData, false)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      e.target.value = ''
+    }
+  }
+
+  async function executeImport(promptData, overwrite) {
+    setImportPrompt(null)
+    setBusy(true)
+    setError('')
+    setMessage('')
+
+    try {
+      const finalMap = new Map(
+        promptData.currentQuestions.map((q) => [q.id, { ...q }])
+      )
+
+      for (const q of promptData.importedList) {
+        if (!finalMap.has(q.id) || overwrite) {
+          finalMap.set(q.id, { ...q })
+        }
+      }
+
+      const resultingQuestions = Array.from(finalMap.values())
+
+      // 1. Capacity check: Max 90 questions
+      if (resultingQuestions.length > 90) {
+        throw new Error(
+          `Total questions cannot exceed 90 (currently at ${promptData.currentQuestions.length}, import would result in ${resultingQuestions.length}). Please delete a few questions and try again.`
+        )
+      }
+
+      // 2. Proportion check: all 6 RIASEC types must have equal counts
+      const counts = { R: 0, I: 0, A: 0, S: 0, E: 0, C: 0 }
+      for (const q of resultingQuestions) {
+        if (counts[q.area] === undefined) {
+          throw new Error(
+            `Invalid question area "${q.area}" for question ${q.id}. Must be R, I, A, S, E, or C.`
+          )
+        }
+        counts[q.area] += 1
+      }
+
+      const countValues = Object.values(counts)
+      const targetCount = countValues[0]
+      const isBalanced = countValues.every((c) => c === targetCount)
+
+      if (!isBalanced) {
+        throw new Error(
+          `All 6 RIASEC types must have an equal number of questions. Current resulting distribution: R: ${counts.R}, I: ${counts.I}, A: ${counts.A}, S: ${counts.S}, E: ${counts.E}, C: ${counts.C}. Please ensure each type has the same count (up to 15 each, max 90 total).`
+        )
+      }
+
+      const packPayload = {
+        version: promptData.rawPack?.version || pack?.version || 'sc-discovery-1',
+        areas: promptData.rawPack?.areas || pack?.areas || {},
+        pairs: promptData.rawPack?.pairs || pack?.pairs || {},
+        anchors: promptData.rawPack?.anchors || pack?.anchors || [],
+        questions: resultingQuestions,
+      }
+
+      await importQuestions(packPayload, { overwrite })
+      setMessage(
+        `Import complete! Pack now has ${resultingQuestions.length} questions (${targetCount} per RIASEC type).`
+      )
       await refresh()
     } catch (err) {
       setError(err.message)
     } finally {
       setBusy(false)
-      e.target.value = ''
     }
   }
 
@@ -374,6 +872,27 @@ export default function App() {
             active={tab === 'questions'}
             onClick={switchTab}
           />
+          <NavItem
+            id="invites"
+            label="Invites"
+            code="03"
+            active={tab === 'invites'}
+            onClick={switchTab}
+          />
+          <NavItem
+            id="colleges"
+            label="Colleges"
+            code="04"
+            active={tab === 'colleges'}
+            onClick={switchTab}
+          />
+          <NavItem
+            id="campus"
+            label="Campus"
+            code="05"
+            active={tab === 'campus'}
+            onClick={switchTab}
+          />
           <button
             type="button"
             className="btn sm block mobile-signout"
@@ -401,24 +920,39 @@ export default function App() {
               active={tab === 'questions'}
               onClick={switchTab}
             />
+            <NavItem
+              id="invites"
+              label="Invites"
+              code="03"
+              active={tab === 'invites'}
+              onClick={switchTab}
+            />
+            <NavItem
+              id="colleges"
+              label="Colleges"
+              code="04"
+              active={tab === 'colleges'}
+              onClick={switchTab}
+            />
+            <NavItem
+              id="campus"
+              label="Campus"
+              code="05"
+              active={tab === 'campus'}
+              onClick={switchTab}
+            />
           </nav>
         </aside>
 
         <main className="main">
           <div className="page-head">
             <div>
-              <p className="mono">
-                {tab === 'waitlist' ? 'Students' : 'RIASEC pack'}
-              </p>
-              <h1>{tab === 'waitlist' ? 'Waitlist' : 'Questions'}</h1>
-              <p>
-                {tab === 'waitlist'
-                  ? 'Everyone who joined the campus waitlist — emails, scores, and answer status.'
-                  : 'Create, edit, import and export the question pack that powers Evelve.'}
-              </p>
+              <p className="mono">{pageMeta.mono}</p>
+              <h1>{pageMeta.title}</h1>
+              <p>{pageMeta.desc}</p>
             </div>
-            <span className={`sticker${tab === 'questions' ? ' mint' : ''}`}>
-              {tab === 'waitlist' ? 'Live list ✳' : 'Pack editor ✳'}
+            <span className={`sticker${tab === 'questions' || tab === 'invites' ? ' mint' : ''}`}>
+              {pageMeta.sticker}
             </span>
           </div>
 
@@ -641,7 +1175,11 @@ export default function App() {
                 </Window>
               )}
 
-              <Window title={`Questions · ${pack?.questions?.length || 0}`}>
+              <Window
+                title={`Questions · ${pack?.questions?.length || 0}${
+                  selectedInPack.length > 0 ? ` (${selectedInPack.length} selected)` : ''
+                }`}
+              >
                 {(pack?.questions || []).length === 0 ? (
                   <div className="empty">
                     <strong>Empty pack</strong>
@@ -651,55 +1189,259 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
+                  <>
+                    {selectedInPack.length > 0 && (
+                      <div className="batch-toolbar">
+                        <div className="batch-toolbar-info">
+                          <span className="tag mint">{selectedInPack.length} selected</span>
+                          <span>
+                            {selectedInPack.length === (pack?.questions || []).length
+                              ? 'All questions selected'
+                              : `${selectedInPack.length} of ${pack?.questions?.length || 0} questions selected`}
+                          </span>
+                        </div>
+                        <div className="batch-toolbar-actions">
+                          <button
+                            type="button"
+                            className="btn sm danger"
+                            disabled={busy}
+                            onClick={onBatchDelete}
+                          >
+                            <TrashIcon size={14} />
+                            Delete selected ({selectedInPack.length})
+                          </button>
+                          <button
+                            type="button"
+                            className="btn sm ghost"
+                            onClick={() => setSelectedIds([])}
+                          >
+                            Deselect all
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 44, textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                className="table-check"
+                                checked={
+                                  (pack?.questions || []).length > 0 &&
+                                  selectedInPack.length === (pack?.questions || []).length
+                                }
+                                ref={(el) => {
+                                  if (el) {
+                                    el.indeterminate =
+                                      selectedInPack.length > 0 &&
+                                      selectedInPack.length < (pack?.questions || []).length
+                                  }
+                                }}
+                                onChange={toggleSelectAll}
+                                title={
+                                  selectedInPack.length === (pack?.questions || []).length
+                                    ? 'Deselect all'
+                                    : 'Select all'
+                                }
+                                aria-label="Select all questions"
+                              />
+                            </th>
+                            <th>ID</th>
+                            <th>Area</th>
+                            <th>Title</th>
+                            <th>Active</th>
+                            <th style={{ width: 100, textAlign: 'center' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(pack?.questions || []).map((q) => {
+                            const isSelected = selectedInPack.includes(q.id)
+                            return (
+                              <tr key={q.id} className={isSelected ? 'selected' : ''}>
+                                <td style={{ textAlign: 'center' }}>
+                                  <input
+                                    type="checkbox"
+                                    className="table-check"
+                                    checked={isSelected}
+                                    onChange={() => toggleSelect(q.id)}
+                                    aria-label={`Select question ${q.id}`}
+                                  />
+                                </td>
+                                <td>
+                                  <span className="tag yellove">{q.id}</span>
+                                </td>
+                                <td>
+                                  <span className={`tag ${AREA_COLORS[q.area] || ''}`}>
+                                    {q.area}
+                                  </span>
+                                </td>
+                                <td>{q.title}</td>
+                                <td>
+                                  <span
+                                    className={`tag ${
+                                      q.active === false ? 'peach' : 'mint'
+                                    }`}
+                                  >
+                                    {q.active === false ? 'Off' : 'On'}
+                                  </span>
+                                </td>
+                                <td>
+                                  <div
+                                    className="row"
+                                    style={{ justifyContent: 'center', gap: 6 }}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="btn-icon"
+                                      title={`Edit question ${q.id}`}
+                                      aria-label={`Edit question ${q.id}`}
+                                      onClick={() => startEdit(q)}
+                                    >
+                                      <EditIcon />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-icon danger"
+                                      title={`Delete question ${q.id}`}
+                                      aria-label={`Delete question ${q.id}`}
+                                      onClick={() => onDelete(q.id)}
+                                    >
+                                      <TrashIcon />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </Window>
+            </>
+          )}
+
+          {tab === 'invites' && (
+            <>
+              <div className="stats">
+                <div className="stat">
+                  <span className="label">Codes</span>
+                  <strong>{invites.length}</strong>
+                  <span>configured</span>
+                </div>
+                <div className="stat mint">
+                  <span className="label">Active</span>
+                  <strong>{invites.filter((i) => i.active !== false).length}</strong>
+                  <span>usable</span>
+                </div>
+                <div className="stat sky">
+                  <span className="label">Consumed</span>
+                  <strong>
+                    {invites.reduce((sum, i) => sum + (Number(i.consumption) || 0), 0)}
+                  </strong>
+                  <span>signups bound</span>
+                </div>
+              </div>
+
+              <Window title="Create invite code">
+                <form className="stack" onSubmit={onCreateInvite}>
+                  <div className="row" style={{ flexWrap: 'wrap', gap: 12 }}>
+                    <label>
+                      <span>Code</span>
+                      <input
+                        required
+                        value={inviteForm.code}
+                        onChange={(e) =>
+                          setInviteForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))
+                        }
+                        placeholder="CAMPUS26"
+                      />
+                    </label>
+                    <label>
+                      <span>Label</span>
+                      <input
+                        value={inviteForm.label}
+                        onChange={(e) =>
+                          setInviteForm((f) => ({ ...f, label: e.target.value }))
+                        }
+                        placeholder="Batch / college"
+                      />
+                    </label>
+                    <label>
+                      <span>Max limit</span>
+                      <input
+                        type="number"
+                        min={1}
+                        required
+                        value={inviteForm.maxLimit}
+                        onChange={(e) =>
+                          setInviteForm((f) => ({ ...f, maxLimit: e.target.value }))
+                        }
+                      />
+                    </label>
+                  </div>
+                  <button type="submit" className="btn dark sm" disabled={busy}>
+                    {busy ? 'Saving…' : 'Create invite'}
+                  </button>
+                </form>
+              </Window>
+
+              <Window title={`Invite codes · ${invites.length}`} actions={
+                <button type="button" className="btn sm ghost" onClick={refresh}>
+                  Refresh
+                </button>
+              }>
+                {invites.length === 0 ? (
+                  <p className="muted">No invite codes yet.</p>
+                ) : (
                   <div className="table-wrap">
                     <table>
                       <thead>
                         <tr>
-                          <th>ID</th>
-                          <th>Area</th>
-                          <th>Title</th>
-                          <th>Active</th>
-                          <th>Actions</th>
+                          <th>Code</th>
+                          <th>Label</th>
+                          <th>Used</th>
+                          <th>Limit</th>
+                          <th>Status</th>
+                          <th />
                         </tr>
                       </thead>
                       <tbody>
-                        {(pack?.questions || []).map((q) => (
-                          <tr key={q.id}>
+                        {invites.map((invite) => (
+                          <tr key={invite.code}>
                             <td>
-                              <span className="tag yellove">{q.id}</span>
+                              <strong>{invite.code}</strong>
                             </td>
+                            <td>{invite.label || '—'}</td>
+                            <td>{invite.consumption || 0}</td>
                             <td>
-                              <span className={`tag ${AREA_COLORS[q.area] || ''}`}>
-                                {q.area}
-                              </span>
+                              <input
+                                type="number"
+                                min={1}
+                                defaultValue={invite.maxLimit}
+                                style={{ width: 88 }}
+                                onBlur={(e) => {
+                                  const next = Number(e.target.value)
+                                  if (next && next !== invite.maxLimit) {
+                                    onUpdateInviteLimit(invite, next)
+                                  }
+                                }}
+                              />
                             </td>
-                            <td>{q.title}</td>
+                            <td>{invite.active === false ? 'Inactive' : 'Active'}</td>
                             <td>
-                              <span
-                                className={`tag ${
-                                  q.active === false ? 'peach' : 'mint'
-                                }`}
+                              <button
+                                type="button"
+                                className="btn sm ghost"
+                                disabled={busy}
+                                onClick={() => onToggleInvite(invite)}
                               >
-                                {q.active === false ? 'Off' : 'On'}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="row">
-                                <button
-                                  type="button"
-                                  className="btn sm"
-                                  onClick={() => startEdit(q)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn sm danger"
-                                  onClick={() => onDelete(q.id)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
+                                {invite.active === false ? 'Reactivate' : 'Deactivate'}
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -710,8 +1452,243 @@ export default function App() {
               </Window>
             </>
           )}
+
+          {tab === 'colleges' && (
+            <>
+              <div className="stats">
+                <div className="stat">
+                  <span className="label">Colleges</span>
+                  <strong>{colleges.length}</strong>
+                  <span>in directory</span>
+                </div>
+                <div className="stat mint">
+                  <span className="label">Departments</span>
+                  <strong>{departments.length}</strong>
+                  <span>shared list</span>
+                </div>
+              </div>
+
+              <Window title="Add college">
+                <form className="stack" onSubmit={onCreateCollege}>
+                  <label>
+                    <span>College name</span>
+                    <input
+                      required
+                      value={collegeForm.name}
+                      onChange={(e) =>
+                        setCollegeForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                      placeholder="e.g. Anna University"
+                    />
+                  </label>
+                  <button type="submit" className="btn dark sm" disabled={busy}>
+                    {busy ? 'Saving…' : 'Add college'}
+                  </button>
+                </form>
+              </Window>
+
+              <Window title={`Colleges · ${colleges.length}`}>
+                {colleges.length === 0 ? (
+                  <p className="muted">No colleges yet.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Status</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {colleges.map((college) => (
+                          <tr key={college.id}>
+                            <td>
+                              <strong>{college.name}</strong>
+                            </td>
+                            <td>{college.active === false ? 'Inactive' : 'Active'}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn sm ghost"
+                                disabled={busy}
+                                onClick={() => onToggleCollege(college)}
+                              >
+                                {college.active === false ? 'Reactivate' : 'Deactivate'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Window>
+
+              <Window title="Add department">
+                <form className="stack" onSubmit={onCreateDepartment}>
+                  <label>
+                    <span>Department name</span>
+                    <input
+                      required
+                      value={deptForm.name}
+                      onChange={(e) =>
+                        setDeptForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                      placeholder="e.g. Computer Science"
+                    />
+                  </label>
+                  <button type="submit" className="btn dark sm" disabled={busy}>
+                    {busy ? 'Saving…' : 'Add department'}
+                  </button>
+                </form>
+              </Window>
+
+              <Window title={`Departments · ${departments.length}`}>
+                {departments.length === 0 ? (
+                  <p className="muted">No departments yet.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Status</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {departments.map((dept) => (
+                          <tr key={dept.id}>
+                            <td>
+                              <strong>{dept.name}</strong>
+                            </td>
+                            <td>{dept.active === false ? 'Inactive' : 'Active'}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="btn sm ghost"
+                                disabled={busy}
+                                onClick={() => onToggleDepartment(dept)}
+                              >
+                                {dept.active === false ? 'Reactivate' : 'Deactivate'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Window>
+            </>
+          )}
+
+          {tab === 'campus' && (
+            <Window title="WhatsApp campus group">
+              <form className="stack" onSubmit={onSaveCampus}>
+                <label>
+                  <span>WhatsApp campus group URL</span>
+                  <input
+                    value={campus.whatsappUrl || ''}
+                    onChange={(e) =>
+                      setCampus((c) => ({ ...c, whatsappUrl: e.target.value }))
+                    }
+                    placeholder="https://chat.whatsapp.com/…"
+                  />
+                </label>
+                <p className="muted" style={{ fontSize: 13 }}>
+                  Shown on results to unlock the roadmap and connect with peers.
+                </p>
+                <button type="submit" className="btn dark sm" disabled={busy}>
+                  {busy ? 'Saving…' : 'Save campus config'}
+                </button>
+              </form>
+            </Window>
+          )}
         </main>
       </div>
+
+      {importPrompt && (
+        <div className="modal-backdrop" onClick={() => setImportPrompt(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <Window
+              title="Import · Overwrite Confirmation"
+              actions={
+                <button
+                  type="button"
+                  className="btn-icon"
+                  style={{ width: 28, height: 28, minWidth: 28, minHeight: 28 }}
+                  onClick={() => setImportPrompt(null)}
+                  title="Close"
+                  aria-label="Close confirmation dialog"
+                >
+                  ✕
+                </button>
+              }
+            >
+              <div style={{ display: 'grid', gap: 14 }}>
+                <p>
+                  The import file contains{' '}
+                  <strong>{importPrompt.importedList.length}</strong> question
+                  {importPrompt.importedList.length > 1 ? 's' : ''}.
+                </p>
+                <div className="callout yellove">
+                  <strong>
+                    {importPrompt.matchingIds.length} existing record
+                    {importPrompt.matchingIds.length > 1 ? 's' : ''} with
+                    matching ID
+                    {importPrompt.matchingIds.length > 1 ? 's' : ''}:
+                  </strong>
+                  <p className="mono" style={{ fontSize: 12, marginTop: 4 }}>
+                    {importPrompt.matchingIds.slice(0, 10).join(', ')}
+                    {importPrompt.matchingIds.length > 10
+                      ? ` (+${importPrompt.matchingIds.length - 10} more)`
+                      : ''}
+                  </p>
+                </div>
+                <p className="muted" style={{ fontSize: 13 }}>
+                  Do you want to overwrite the existing records with the
+                  imported content, or keep existing records and only append new
+                  ones?
+                </p>
+                <div
+                  className="row"
+                  style={{ flexWrap: 'wrap', gap: 8, marginTop: 6 }}
+                >
+                  <button
+                    type="button"
+                    className="btn dark sm"
+                    disabled={busy}
+                    onClick={() => executeImport(importPrompt, true)}
+                  >
+                    Overwrite matching ({importPrompt.matchingIds.length})
+                  </button>
+                  {importPrompt.newQuestions.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={busy}
+                      onClick={() => executeImport(importPrompt, false)}
+                    >
+                      Keep existing &amp; Append new (
+                      {importPrompt.newQuestions.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn sm ghost"
+                    disabled={busy}
+                    onClick={() => setImportPrompt(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </Window>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

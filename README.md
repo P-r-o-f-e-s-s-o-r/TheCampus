@@ -16,6 +16,8 @@ Firebase project: `sapienscampus-97b6a`
 - Web hosting: https://sapienscampus-97b6a.web.app  
 - Admin hosting: https://sapienscampus-admin.web.app  
 
+Student web includes **Firebase Analytics** + **Performance Monitoring**. Key funnel events: `get_started_click`, `invite_unlocked`, `sign_in_google_*`, `profile_completed`, `quiz_started`, `quiz_milestone`, `quiz_completed`, `results_view`, `whatsapp_join_click`, `retake_quiz_click`, plus `screen_view` per step.
+
 ---
 
 ## Firestore collections
@@ -23,8 +25,12 @@ Firebase project: `sapienscampus-97b6a`
 | Collection | Purpose |
 |---|---|
 | `questions/{id}` | Quiz prompts (`area`, `title`, `cue`, `icon`, `scene`, `sortOrder`, `active`) |
-| `quizMeta/config` | Shared `areas`, `pairs`, `anchors`, `version` |
-| `waitlist/{id}` | Signup emails + optional answers/scores |
+| `quizMeta/config` | Shared `areas`, `pairs`, `anchors`, `roleMap`, `boosts`, `whatsappUrl`, `version` |
+| `inviteCodes/{code}` | Invite codes (`maxLimit`, `consumption`, `active`, `label`) |
+| `colleges/{id}` | Independent college names (`name`, `active`) |
+| `departments/{id}` | Independent department names (`name`, `active`) |
+| `users/{uid}` | Student profiles + discovery answers/scores/roles |
+| `waitlist/{id}` | Legacy signup emails + optional answers/scores |
 | `admins/{email}` | Allowlisted admin emails |
 
 Client SDK access is denied by rules — all reads/writes go through Cloud Functions.
@@ -67,8 +73,12 @@ firebase deploy --only firestore,functions,hosting
 
 ## Public API
 
-- `GET /api/questions` — active questions + scoring metadata  
-- `POST /api/waitlist` — `{ email, consent, company?, answers?, scores? }`  
+- `GET /api/questions` — active questions + roleMap/boosts  
+- `POST /api/invites/check` — validate invite without consuming  
+- `GET /api/colleges` — active colleges + departments  
+- `GET /api/colleges/:id/stats` — signed-up count  
+- `GET /api/me`, `POST /api/me/profile`, `POST /api/me/discovery` — student Bearer token  
+- `POST /api/waitlist` — legacy `{ email, consent, company?, answers?, scores? }`  
 
 ## Admin API (Bearer Firebase ID token)
 
@@ -77,3 +87,8 @@ firebase deploy --only firestore,functions,hosting
 - `PUT|DELETE /api/admin/questions/:id`
 - `GET /api/admin/questions/export`
 - `POST /api/admin/questions/import`
+- `GET|POST /api/admin/invites`, `PUT|DELETE /api/admin/invites/:code`
+- `GET|POST /api/admin/colleges`, `PUT /api/admin/colleges/:id`
+- `POST /api/admin/departments`, `PUT /api/admin/departments/:id`
+- `GET|PUT /api/admin/campus`
+- `GET /api/admin/users`
