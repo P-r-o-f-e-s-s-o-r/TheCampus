@@ -15,6 +15,7 @@ import {
   listColleges,
   listInvites,
   listQuestions,
+  listUsers,
   listWaitlist,
   updateCampus,
   updateCollege,
@@ -168,11 +169,51 @@ function NavItem({ id, label, code, active, onClick }) {
   )
 }
 
+const PAGE_SIZE = 25
+const RIASEC_ORDER = ['R', 'I', 'A', 'S', 'E', 'C']
+/** One discovery set per page: 5 questions × 6 RIASEC types. */
+const QUESTIONS_PER_TYPE = 5
+const QUESTIONS_PAGE_SIZE = RIASEC_ORDER.length * QUESTIONS_PER_TYPE
+
+function Pager({ page, pageSize, total, hasNext, hasPrev, onPrev, onNext, busy }) {
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1
+  const to = Math.min(page * pageSize, total || page * pageSize)
+  return (
+    <div className="pager">
+      <span className="pager-meta mono">
+        {total != null
+          ? `${from}–${Math.min(to, total)} of ${total}`
+          : `Page ${page}`}
+      </span>
+      <div className="pager-actions">
+        <button type="button" className="btn sm ghost" disabled={!hasPrev || busy} onClick={onPrev}>
+          ← Prev
+        </button>
+        <button type="button" className="btn sm ghost" disabled={!hasNext || busy} onClick={onNext}>
+          Next →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [user, setUser] = useState(undefined)
   const [tab, setTab] = useState('waitlist')
   const [menuOpen, setMenuOpen] = useState(false)
   const [waitlist, setWaitlist] = useState([])
+  const [waitlistTotal, setWaitlistTotal] = useState(0)
+  const [waitlistCursor, setWaitlistCursor] = useState('')
+  const [waitlistCursorStack, setWaitlistCursorStack] = useState([])
+  const [waitlistPage, setWaitlistPage] = useState(1)
+  const [waitlistNextCursor, setWaitlistNextCursor] = useState(null)
+  const [users, setUsers] = useState([])
+  const [usersTotal, setUsersTotal] = useState(0)
+  const [usersCursor, setUsersCursor] = useState('')
+  const [usersCursorStack, setUsersCursorStack] = useState([])
+  const [usersPage, setUsersPage] = useState(1)
+  const [usersNextCursor, setUsersNextCursor] = useState(null)
+  const [questionsPage, setQuestionsPage] = useState(1)
   const [pack, setPack] = useState(null)
   const [invites, setInvites] = useState([])
   const [colleges, setColleges] = useState([])
@@ -222,12 +263,27 @@ export default function App() {
     []
   )
 
+  const applyWaitlistPage = useCallback((data) => {
+    setWaitlist(data.entries || [])
+    setWaitlistTotal(data.total || 0)
+    setWaitlistNextCursor(data.nextCursor || null)
+  }, [])
+
+  const applyUsersPage = useCallback((data) => {
+    setUsers(data.users || [])
+    setUsersTotal(data.total || 0)
+    setUsersNextCursor(data.nextCursor || null)
+  }, [])
+
   const refresh = useCallback(async () => {
     setError('')
     try {
       if (tab === 'waitlist') {
-        const data = await listWaitlist()
-        setWaitlist(data.entries || [])
+        const data = await listWaitlist({ limit: PAGE_SIZE, cursor: waitlistCursor })
+        applyWaitlistPage(data)
+      } else if (tab === 'users') {
+        const data = await listUsers({ limit: PAGE_SIZE, cursor: usersCursor })
+        applyUsersPage(data)
       } else if (tab === 'questions') {
         const data = await listQuestions()
         setPack(data.pack)
@@ -245,7 +301,7 @@ export default function App() {
     } catch (err) {
       setError(err.message)
     }
-  }, [tab])
+  }, [tab, waitlistCursor, usersCursor, applyWaitlistPage, applyUsersPage])
 
   useEffect(() => {
     if (!user) return
@@ -253,8 +309,11 @@ export default function App() {
     async function load() {
       try {
         if (tab === 'waitlist') {
-          const data = await listWaitlist()
-          if (active) setWaitlist(data.entries || [])
+          const data = await listWaitlist({ limit: PAGE_SIZE, cursor: waitlistCursor })
+          if (active) applyWaitlistPage(data)
+        } else if (tab === 'users') {
+          const data = await listUsers({ limit: PAGE_SIZE, cursor: usersCursor })
+          if (active) applyUsersPage(data)
         } else if (tab === 'questions') {
           const data = await listQuestions()
           if (active) setPack(data.pack)
@@ -279,7 +338,7 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [user, tab])
+  }, [user, tab, waitlistCursor, usersCursor, applyWaitlistPage, applyUsersPage])
 
   const selectedInPack = useMemo(() => {
     const valid = new Set((pack?.questions || []).map((q) => q.id))
@@ -289,6 +348,42 @@ export default function App() {
   const waitlistWithAnswers = useMemo(
     () => waitlist.filter((row) => row.hasAnswers).length,
     [waitlist]
+  )
+
+  const questionsByType = useMemo(() => {
+    const buckets = Object.fromEntries(RIASEC_ORDER.map((k) => [k, []]))
+    for (const q of pack?.questions || []) {
+      const area = String(q.area || '').toUpperCase()
+      if (!buckets[area]) continue
+      buckets[area].push(q)
+    }
+    for (const key of RIASEC_ORDER) {
+      buckets[key].sort(
+        (a, b) =>
+          (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.id).localeCompare(String(b.id))
+      )
+    }
+    return buckets
+  }, [pack])
+
+  const questionsPageCount = useMemo(() => {
+    const maxPerType = Math.max(0, ...RIASEC_ORDER.map((k) => questionsByType[k].length))
+    return Math.max(1, Math.ceil(maxPerType / QUESTIONS_PER_TYPE))
+  }, [questionsByType])
+
+  const pagedQuestions = useMemo(() => {
+    const page = Math.min(Math.max(1, questionsPage), questionsPageCount)
+    const start = (page - 1) * QUESTIONS_PER_TYPE
+    const rows = []
+    for (const key of RIASEC_ORDER) {
+      rows.push(...questionsByType[key].slice(start, start + QUESTIONS_PER_TYPE))
+    }
+    return rows
+  }, [questionsByType, questionsPage, questionsPageCount])
+
+  const questionsTotal = useMemo(
+    () => RIASEC_ORDER.reduce((sum, key) => sum + questionsByType[key].length, 0),
+    [questionsByType]
   )
 
   const activeQuestions = useMemo(
@@ -322,6 +417,49 @@ export default function App() {
     setError('')
     setSelectedIds([])
     closeForm()
+    if (next === 'waitlist') {
+      setWaitlistCursor('')
+      setWaitlistCursorStack([])
+      setWaitlistPage(1)
+    }
+    if (next === 'users') {
+      setUsersCursor('')
+      setUsersCursorStack([])
+      setUsersPage(1)
+    }
+    if (next === 'questions') setQuestionsPage(1)
+  }
+
+  function goWaitlistNext() {
+    if (!waitlistNextCursor) return
+    setWaitlistCursorStack((stack) => [...stack, waitlistCursor])
+    setWaitlistCursor(waitlistNextCursor)
+    setWaitlistPage((p) => p + 1)
+  }
+
+  function goWaitlistPrev() {
+    if (!waitlistCursorStack.length) return
+    const stack = [...waitlistCursorStack]
+    const prev = stack.pop() || ''
+    setWaitlistCursorStack(stack)
+    setWaitlistCursor(prev)
+    setWaitlistPage((p) => Math.max(1, p - 1))
+  }
+
+  function goUsersNext() {
+    if (!usersNextCursor) return
+    setUsersCursorStack((stack) => [...stack, usersCursor])
+    setUsersCursor(usersNextCursor)
+    setUsersPage((p) => p + 1)
+  }
+
+  function goUsersPrev() {
+    if (!usersCursorStack.length) return
+    const stack = [...usersCursorStack]
+    const prev = stack.pop() || ''
+    setUsersCursorStack(stack)
+    setUsersCursor(prev)
+    setUsersPage((p) => Math.max(1, p - 1))
   }
 
   async function onCreateInvite(e) {
@@ -465,6 +603,12 @@ export default function App() {
       title: 'Waitlist',
       desc: 'Everyone who joined the campus waitlist — emails, scores, and answer status.',
       sticker: 'Live list ✳',
+    },
+    users: {
+      mono: 'Students',
+      title: 'Signed-up users',
+      desc: 'Profiles that completed invite + college signup. Paginated for speed.',
+      sticker: 'Directory ✳',
     },
     questions: {
       mono: 'RIASEC pack',
@@ -873,37 +1017,44 @@ export default function App() {
             onClick={switchTab}
           />
           <NavItem
+            id="users"
+            label="Users"
+            code="02"
+            active={tab === 'users'}
+            onClick={switchTab}
+          />
+          <NavItem
             id="questions"
             label="Questions"
-            code="02"
+            code="03"
             active={tab === 'questions'}
             onClick={switchTab}
           />
           <NavItem
             id="invites"
             label="Invites"
-            code="03"
+            code="04"
             active={tab === 'invites'}
             onClick={switchTab}
           />
           <NavItem
             id="colleges"
             label="Colleges"
-            code="04"
+            code="05"
             active={tab === 'colleges'}
             onClick={switchTab}
           />
           <NavItem
             id="campus"
             label="Campus"
-            code="05"
+            code="06"
             active={tab === 'campus'}
             onClick={switchTab}
           />
           <NavItem
             id="roadmaps"
             label="Roadmaps"
-            code="06"
+            code="07"
             active={tab === 'roadmaps'}
             onClick={switchTab}
           />
@@ -928,37 +1079,44 @@ export default function App() {
               onClick={switchTab}
             />
             <NavItem
+              id="users"
+              label="Users"
+              code="02"
+              active={tab === 'users'}
+              onClick={switchTab}
+            />
+            <NavItem
               id="questions"
               label="Questions"
-              code="02"
+              code="03"
               active={tab === 'questions'}
               onClick={switchTab}
             />
             <NavItem
               id="invites"
               label="Invites"
-              code="03"
+              code="04"
               active={tab === 'invites'}
               onClick={switchTab}
             />
             <NavItem
               id="colleges"
               label="Colleges"
-              code="04"
+              code="05"
               active={tab === 'colleges'}
               onClick={switchTab}
             />
             <NavItem
               id="campus"
               label="Campus"
-              code="05"
+              code="06"
               active={tab === 'campus'}
               onClick={switchTab}
             />
             <NavItem
               id="roadmaps"
               label="Roadmaps"
-              code="06"
+              code="07"
               active={tab === 'roadmaps'}
               onClick={switchTab}
             />
@@ -984,75 +1142,161 @@ export default function App() {
               <div className="stats">
                 <div className="stat">
                   <span className="label">Total</span>
-                  <strong>{waitlist.length}</strong>
+                  <strong>{waitlistTotal}</strong>
                   <span>on the waitlist</span>
                 </div>
                 <div className="stat mint">
-                  <span className="label">Answered</span>
+                  <span className="label">This page</span>
                   <strong>{waitlistWithAnswers}</strong>
-                  <span>finished the quiz</span>
+                  <span>answered on page</span>
                 </div>
                 <div className="stat sky">
-                  <span className="label">Pending</span>
-                  <strong>{waitlist.length - waitlistWithAnswers}</strong>
-                  <span>still exploring</span>
+                  <span className="label">Page size</span>
+                  <strong>{PAGE_SIZE}</strong>
+                  <span>rows per request</span>
                 </div>
               </div>
 
-              <Window title={`Waitlisted students · ${waitlist.length}`}>
+              <Window title={`Waitlisted students · ${waitlistTotal}`}>
                 {waitlist.length === 0 ? (
                   <div className="empty">
                     <strong>Nobody here yet</strong>
                     <p className="muted">Fresh waitlist. Check back after the next push.</p>
                   </div>
                 ) : (
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Email</th>
-                          <th>Joined</th>
-                          <th>Scores</th>
-                          <th>Answers</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {waitlist.map((row) => (
-                          <tr key={row.id}>
-                            <td className="email">{row.email}</td>
-                            <td>
-                              {row.createdAt
-                                ? new Date(row.createdAt).toLocaleString()
-                                : '—'}
-                            </td>
-                            <td>
-                              {row.scores ? (
-                                <div className="score-chips">
-                                  {Object.entries(row.scores).map(([k, v]) => (
-                                    <span
-                                      key={k}
-                                      className={`tag ${AREA_COLORS[k] || ''}`}
-                                    >
-                                      {k}:{v}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td>
-                              <span
-                                className={`tag ${row.hasAnswers ? 'mint' : 'peach'}`}
-                              >
-                                {row.hasAnswers ? 'Yes' : 'No'}
-                              </span>
-                            </td>
+                  <>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Email</th>
+                            <th>Joined</th>
+                            <th>Scores</th>
+                            <th>Answers</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {waitlist.map((row) => (
+                            <tr key={row.id}>
+                              <td className="email">{row.email}</td>
+                              <td>
+                                {row.createdAt
+                                  ? new Date(row.createdAt).toLocaleString()
+                                  : '—'}
+                              </td>
+                              <td>
+                                {row.scores ? (
+                                  <div className="score-chips">
+                                    {Object.entries(row.scores).map(([k, v]) => (
+                                      <span
+                                        key={k}
+                                        className={`tag ${AREA_COLORS[k] || ''}`}
+                                      >
+                                        {k}:{v}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  '—'
+                                )}
+                              </td>
+                              <td>
+                                <span
+                                  className={`tag ${row.hasAnswers ? 'mint' : 'peach'}`}
+                                >
+                                  {row.hasAnswers ? 'Yes' : 'No'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pager
+                      page={waitlistPage}
+                      pageSize={PAGE_SIZE}
+                      total={waitlistTotal}
+                      hasPrev={waitlistCursorStack.length > 0}
+                      hasNext={Boolean(waitlistNextCursor)}
+                      onPrev={goWaitlistPrev}
+                      onNext={goWaitlistNext}
+                      busy={busy}
+                    />
+                  </>
+                )}
+              </Window>
+            </>
+          )}
+
+          {tab === 'users' && (
+            <>
+              <div className="stats">
+                <div className="stat">
+                  <span className="label">Total</span>
+                  <strong>{usersTotal}</strong>
+                  <span>signed-up users</span>
+                </div>
+                <div className="stat mint">
+                  <span className="label">This page</span>
+                  <strong>{users.filter((u) => u.hasAnswers).length}</strong>
+                  <span>with discovery</span>
+                </div>
+                <div className="stat sky">
+                  <span className="label">Page size</span>
+                  <strong>{PAGE_SIZE}</strong>
+                  <span>rows per request</span>
+                </div>
+              </div>
+
+              <Window title={`Users · ${usersTotal}`}>
+                {users.length === 0 ? (
+                  <div className="empty">
+                    <strong>No signed-up users yet</strong>
+                    <p className="muted">Profiles appear after invite + college signup.</p>
                   </div>
+                ) : (
+                  <>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Email</th>
+                            <th>College</th>
+                            <th>Role</th>
+                            <th>Joined</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {users.map((row) => (
+                            <tr key={row.id}>
+                              <td className="email">{row.email || '—'}</td>
+                              <td>{row.collegeId || '—'}</td>
+                              <td>
+                                {row.selectedRole?.name ||
+                                  row.roles?.[0]?.name ||
+                                  (row.hasAnswers ? 'Unpicked' : '—')}
+                              </td>
+                              <td>
+                                {row.createdAt
+                                  ? new Date(row.createdAt).toLocaleString()
+                                  : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pager
+                      page={usersPage}
+                      pageSize={PAGE_SIZE}
+                      total={usersTotal}
+                      hasPrev={usersCursorStack.length > 0}
+                      hasNext={Boolean(usersNextCursor)}
+                      onPrev={goUsersPrev}
+                      onNext={goUsersNext}
+                      busy={busy}
+                    />
+                  </>
                 )}
               </Window>
             </>
@@ -1278,7 +1522,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(pack?.questions || []).map((q) => {
+                          {pagedQuestions.map((q) => {
                             const isSelected = selectedInPack.includes(q.id)
                             return (
                               <tr key={q.id} className={isSelected ? 'selected' : ''}>
@@ -1340,6 +1584,23 @@ export default function App() {
                         </tbody>
                       </table>
                     </div>
+                    <Pager
+                      page={Math.min(questionsPage, questionsPageCount)}
+                      pageSize={QUESTIONS_PAGE_SIZE}
+                      total={questionsTotal}
+                      hasPrev={questionsPage > 1}
+                      hasNext={questionsPage < questionsPageCount}
+                      onPrev={() => setQuestionsPage((p) => Math.max(1, p - 1))}
+                      onNext={() =>
+                        setQuestionsPage((p) => Math.min(questionsPageCount, p + 1))
+                      }
+                      busy={busy}
+                    />
+                    <p className="muted" style={{ marginTop: 8, fontSize: 13 }}>
+                      Each page is one discovery set: {QUESTIONS_PER_TYPE} questions ×{' '}
+                      {RIASEC_ORDER.length} types ({QUESTIONS_PAGE_SIZE} total), ordered R → I →
+                      A → S → E → C.
+                    </p>
                   </>
                 )}
               </Window>

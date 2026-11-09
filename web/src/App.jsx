@@ -6,6 +6,8 @@ import {
   fetchMe,
   fetchMyRoadmap,
   fetchQuestions,
+  peekColleges,
+  peekQuestions,
   saveDiscovery,
   saveProfile,
   switchRoadmap,
@@ -32,6 +34,7 @@ import {
   startQuizTrace,
   stopQuizTrace,
   track,
+  trackOnce,
   trackScreen,
 } from './lib/analytics'
 import { avatarForRole } from './lib/roleAvatars'
@@ -44,7 +47,35 @@ function parseRoadmapHash(hash = '') {
   return { roleId: match[1], stepId: match[2] || '' }
 }
 
-const STORAGE_KEY = 'sapiens-campus-discovery-v4'
+const STORAGE_KEY = 'sapiens-campus-discovery-v5'
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY) || sessionStorage.getItem(STORAGE_KEY)
+    return JSON.parse(raw || 'null')
+  } catch {
+    return null
+  }
+}
+
+function saveState(payload) {
+  try {
+    const raw = JSON.stringify(payload)
+    localStorage.setItem(STORAGE_KEY, raw)
+    sessionStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // Quota / private mode — ignore.
+  }
+}
+
+function clearState() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+    sessionStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // ignore
+  }
+}
 
 const COACH = [
   'No right answers. Just your first reaction.',
@@ -100,14 +131,6 @@ function isValidMobile(value) {
   if (mobile.length === 12 && mobile.startsWith('91')) mobile = mobile.slice(2)
   else if (mobile.length === 11 && mobile.startsWith('0')) mobile = mobile.slice(1)
   return /^[6-9]\d{9}$/.test(mobile)
-}
-
-function loadState() {
-  try {
-    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null')
-  } catch {
-    return null
-  }
 }
 
 function Header({ note = true, user, onSignOut, onBrand }) {
@@ -247,13 +270,33 @@ export default function App() {
   const [confirmingRole, setConfirmingRole] = useState(false)
   const [roadmapEntry, setRoadmapEntry] = useState(() => parseRoadmapHash(window.location.hash))
   const [roadmapSummary, setRoadmapSummary] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const profileErrorRef = useRef(null)
+  const pendingAuthEvent = useRef(null)
+  const appliedUserRef = useRef(null)
+  const justConfirmedRole = useRef(false)
 
   const boosts = pack?.boosts?.length ? pack.boosts : FALLBACK_BOOSTS
   const midBoosts = boosts.filter((b) => String(b.id || '').startsWith('mid-'))
   const introBoost = boosts.find((b) => b.id === 'ikigai-intro') || FALLBACK_BOOSTS[1]
 
+  function applyMe(me) {
+    setProfile(me)
+    if (me?.inviteCode) setInviteCode(me.inviteCode)
+    if (me?.collegeId) {
+      setCollegeId(me.collegeId)
+      setDepartmentId(me.departmentId || '')
+      setPassoutYear(me.passoutYear ? String(me.passoutYear) : '')
+      if (me.mobile) setMobile(me.mobile)
+    }
+    if (me?.selectedRole?.id) {
+      setSelectedRoleId(me.selectedRole.id)
+      setRoleConfirmed(true)
+    }
+  }
+
   function routeAfterAuth(me) {
+    setError('')
     if (me?.hasAnswers && me?.roles?.length) {
       setView('results')
       return
@@ -266,6 +309,7 @@ export default function App() {
   }
 
   function goGetStarted() {
+    setError('')
     track('get_started_click', {
       has_profile: Boolean(profile?.collegeId),
       has_results: Boolean(profile?.hasAnswers),
@@ -286,6 +330,7 @@ export default function App() {
           auth_provider: next.providerData?.[0]?.providerId || 'unknown',
         })
       }
+      setAuthChecked(true)
     })
     return () => unsub()
   }, [])
@@ -331,6 +376,27 @@ export default function App() {
     setView('roadmap')
   }
 
+  function goHome() {
+    setError('')
+    if (view === 'roadmap') {
+      leaveRoadmap()
+      return
+    }
+    if (profile?.hasAnswers && profile?.roles?.length) {
+      setView('results')
+      return
+    }
+    if (user && profile?.collegeId && profile?.mobile) {
+      setView('intro')
+      return
+    }
+    if (user) {
+      setView('profile')
+      return
+    }
+    setView('landing')
+  }
+
   function leaveRoadmap() {
     if (window.location.hash.startsWith('#roadmap')) {
       window.history.pushState(null, '', `${window.location.pathname}${window.location.search}`)
@@ -339,68 +405,112 @@ export default function App() {
   }
 
   useEffect(() => {
-    Promise.all([fetchQuestions(), fetchColleges()])
-      .then(async ([qData, cData]) => {
-        setPack(qData)
-        setColleges(cData.colleges || [])
-        setDepartments(cData.departments || [])
-        setGlobalWhatsapp(cData.whatsappUrl || qData.whatsappUrl || '')
+    let alive = true
+    let restored = false
 
-        const saved = loadState()
-        if (saved?.inviteCode) {
-          setInviteCode(saved.inviteCode)
-          setInviteLabel(saved.inviteLabel || '')
+    function restoreSession(qData) {
+      if (restored) return
+      restored = true
+      const saved = loadState()
+      if (saved?.inviteCode) {
+        setInviteCode(saved.inviteCode)
+        setInviteLabel(saved.inviteLabel || '')
+      }
+      if (saved?.quiz?.length === QUIZ_LENGTH && saved.answers) {
+        const ids = new Set((qData.questions || []).map((q) => q.id))
+        const stillValid = saved.quiz.every((q) => ids.has(q.id))
+        if (stillValid) {
+          setQuiz(saved.quiz)
+          setAnswers(saved.answers)
+          setIndex(Math.min(saved.index || 0, QUIZ_LENGTH - 1))
+          setBoostIndex(saved.boostIndex || 0)
         }
-        if (saved?.quiz?.length === QUIZ_LENGTH && saved.answers) {
-          const ids = new Set((qData.questions || []).map((q) => q.id))
-          const stillValid = saved.quiz.every((q) => ids.has(q.id))
-          if (stillValid) {
-            setQuiz(saved.quiz)
-            setAnswers(saved.answers)
-            setIndex(Math.min(saved.index || 0, QUIZ_LENGTH - 1))
-            setBoostIndex(saved.boostIndex || 0)
-          }
-        }
-        if (saved?.view) setView(saved.view)
-        if (saved?.collegeId) setCollegeId(saved.collegeId)
-        if (saved?.departmentId) setDepartmentId(saved.departmentId)
-        if (saved?.passoutYear) setPassoutYear(String(saved.passoutYear))
-        if (saved?.mobile) setMobile(saved.mobile)
-        if (saved?.selectedRoleId) setSelectedRoleId(saved.selectedRoleId)
-        if (saved?.roleConfirmed) setRoleConfirmed(Boolean(saved.roleConfirmed))
-        const fromHash = parseRoadmapHash(window.location.hash)
-        if (fromHash) {
-          setRoadmapEntry(fromHash)
-          setView('roadmap')
-        }
+      }
+      if (saved?.view) setView(saved.view)
+      if (saved?.collegeId) setCollegeId(saved.collegeId)
+      if (saved?.departmentId) setDepartmentId(saved.departmentId)
+      if (saved?.passoutYear) setPassoutYear(String(saved.passoutYear))
+      if (saved?.mobile) setMobile(saved.mobile)
+      if (saved?.selectedRoleId) setSelectedRoleId(saved.selectedRoleId)
+      if (saved?.roleConfirmed) setRoleConfirmed(Boolean(saved.roleConfirmed))
+      const fromHash = parseRoadmapHash(window.location.hash)
+      if (fromHash) {
+        setRoadmapEntry(fromHash)
+        setView('roadmap')
+      }
+    }
+
+    function applyCatalog(qData, cData) {
+      setPack(qData)
+      setColleges(cData?.colleges || [])
+      setDepartments(cData?.departments || [])
+      setGlobalWhatsapp(cData?.whatsappUrl || qData?.whatsappUrl || '')
+    }
+
+    const warmQ = peekQuestions()
+    const warmC = peekColleges()
+    if (warmQ) {
+      applyCatalog(warmQ, warmC || {})
+      restoreSession(warmQ)
+      setLoading(false)
+    }
+
+    Promise.all([fetchQuestions({ force: true }), fetchColleges({ force: true })])
+      .then(([qData, cData]) => {
+        if (!alive) return
+        applyCatalog(qData, cData)
+        restoreSession(qData)
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (alive && !warmQ) setError(err.message)
+      })
+      .finally(() => {
+        if (alive) setLoading(false)
+      })
+
+    return () => {
+      alive = false
+    }
   }, [])
 
   useEffect(() => {
     if (!user) {
+      appliedUserRef.current = null
       setProfile(null)
       return
     }
+    if (
+      !pendingAuthEvent.current &&
+      appliedUserRef.current === user.uid &&
+      profileRef.current
+    ) {
+      return
+    }
+    let alive = true
     fetchMe()
       .then((data) => {
+        if (!alive) return
         const me = data.user
-        setProfile(me)
-        if (me?.inviteCode) {
-          setInviteCode(me.inviteCode)
-        }
-        if (me?.collegeId) {
-          setCollegeId(me.collegeId)
-          setDepartmentId(me.departmentId || '')
-          setPassoutYear(me.passoutYear ? String(me.passoutYear) : '')
-          if (me.mobile) setMobile(me.mobile)
-        }
-        if (me?.selectedRole?.id) {
-          setSelectedRoleId(me.selectedRole.id)
-          setRoleConfirmed(true)
+        appliedUserRef.current = user.uid
+        applyMe(me)
+        const authKind = pendingAuthEvent.current
+        if (authKind) {
+          pendingAuthEvent.current = null
+          const eventName =
+            authKind === 'google'
+              ? 'sign_in_google_success'
+              : authKind === 'signup'
+                ? 'sign_up_email_success'
+                : 'sign_in_email_success'
+          track(eventName, {
+            returning: Boolean(me?.collegeId),
+            has_results: Boolean(me?.hasAnswers),
+          })
+          routeAfterAuth(me)
+          return
         }
         const entryViews = new Set(['landing', 'invite', 'welcome', 'signup'])
+        setError('')
         setView((v) => {
           if (!entryViews.has(v)) return v
           if (me?.hasAnswers && me?.roles?.length) return 'results'
@@ -409,27 +519,27 @@ export default function App() {
         })
       })
       .catch(() => {})
+    return () => {
+      alive = false
+    }
   }, [user])
 
   useEffect(() => {
-    sessionStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        view,
-        quiz,
-        index,
-        answers,
-        boostIndex,
-        inviteCode,
-        inviteLabel,
-        collegeId,
-        departmentId,
-        passoutYear,
-        mobile,
-        selectedRoleId,
-        roleConfirmed,
-      })
-    )
+    saveState({
+      view,
+      quiz,
+      index,
+      answers,
+      boostIndex,
+      inviteCode,
+      inviteLabel,
+      collegeId,
+      departmentId,
+      passoutYear,
+      mobile,
+      selectedRoleId,
+      roleConfirmed,
+    })
   }, [
     view,
     quiz,
@@ -472,12 +582,13 @@ export default function App() {
     return scoreAnswers(quiz, answers)
   }, [quiz, answers, answeredCount])
 
+  const savedRoles = profile?.roles
   const roleProfile = useMemo(() => {
     if (scores && pack) {
       return resolveRoles(scores, pack.roleMap || {}, { max: 2 })
     }
-    if (profile?.roles?.length && pack?.roleMap) {
-      const roles = profile.roles
+    if (savedRoles?.length && pack?.roleMap) {
+      const roles = savedRoles
         .map((r) => {
           const key = r.key || Object.keys(pack.roleMap).find((k) => pack.roleMap[k]?.id === r.id)
           const meta = (key && pack.roleMap[key]) || {}
@@ -505,7 +616,7 @@ export default function App() {
       }
     }
     return null
-  }, [scores, pack, profile])
+  }, [scores, pack, savedRoles])
 
   const selectedCollege = useMemo(
     () => colleges.find((c) => c.id === collegeId) || null,
@@ -533,30 +644,34 @@ export default function App() {
     }
   }
 
+  function authErrorMessage(err, mode) {
+    const code = err?.code || ''
+    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found' || code === 'auth/invalid-login-credentials') {
+      return 'That email and password don’t match. Try again, or create an account.'
+    }
+    if (code === 'auth/email-already-in-use') return 'That email already has an account. Sign in instead.'
+    if (code === 'auth/weak-password') return 'Use at least 6 characters.'
+    if (code === 'auth/invalid-email') return 'Enter a valid email address.'
+    if (code === 'auth/too-many-requests') return 'Too many tries. Wait a moment, then try again.'
+    if (code === 'auth/network-request-failed') return 'You appear to be offline. Check your connection and try again.'
+    if (mode === 'google') return 'Google sign-in didn’t finish. Try again.'
+    return mode === 'signup' ? 'Couldn’t create the account. Try again.' : 'Couldn’t sign in. Try again.'
+  }
+
   async function onGoogleAuth() {
     setBusyAuth(true)
     setError('')
     track('sign_in_google_click')
     try {
+      pendingAuthEvent.current = 'google'
+      appliedUserRef.current = null
       await signInWithPopup(auth, googleProvider)
-      const data = await fetchMe()
-      setProfile(data.user)
-      if (data.user?.inviteCode) setInviteCode(data.user.inviteCode)
-      if (data.user?.collegeId) {
-        setCollegeId(data.user.collegeId)
-        setDepartmentId(data.user.departmentId || '')
-        setPassoutYear(data.user.passoutYear ? String(data.user.passoutYear) : '')
-        if (data.user.mobile) setMobile(data.user.mobile)
-      }
-      track('sign_in_google_success', {
-        returning: Boolean(data.user?.collegeId),
-        has_results: Boolean(data.user?.hasAnswers),
-      })
-      routeAfterAuth(data.user)
+      // Profile load + success event happen once in the auth effect.
     } catch (err) {
+      pendingAuthEvent.current = null
       if (err.code !== 'auth/popup-closed-by-user') {
         track('sign_in_google_failed', { error: String(err.code || err.message).slice(0, 80) })
-        setError(err.message)
+        setError(authErrorMessage(err, 'google'))
       } else {
         track('sign_in_google_cancelled')
       }
@@ -574,30 +689,20 @@ export default function App() {
     try {
       const email = authForm.email.trim()
       const password = authForm.password
+      pendingAuthEvent.current = mode === 'signup' ? 'signup' : 'email'
+      appliedUserRef.current = null
       if (mode === 'signup') {
         await createUserWithEmailAndPassword(auth, email, password)
       } else {
         await signInWithEmailAndPassword(auth, email, password)
       }
-      const data = await fetchMe()
-      setProfile(data.user)
-      if (data.user?.inviteCode) setInviteCode(data.user.inviteCode)
-      if (data.user?.collegeId) {
-        setCollegeId(data.user.collegeId)
-        setDepartmentId(data.user.departmentId || '')
-        setPassoutYear(data.user.passoutYear ? String(data.user.passoutYear) : '')
-        if (data.user.mobile) setMobile(data.user.mobile)
-      }
-      track(mode === 'signup' ? 'sign_up_email_success' : 'sign_in_email_success', {
-        returning: Boolean(data.user?.collegeId),
-        has_results: Boolean(data.user?.hasAnswers),
-      })
-      routeAfterAuth(data.user)
+      // Profile load + success event happen once in the auth effect.
     } catch (err) {
+      pendingAuthEvent.current = null
       track(mode === 'signup' ? 'sign_up_email_failed' : 'sign_in_email_failed', {
         error: String(err.code || err.message).slice(0, 80),
       })
-      setError(err.message)
+      setError(authErrorMessage(err, mode))
     } finally {
       setBusyAuth(false)
     }
@@ -693,6 +798,11 @@ export default function App() {
 
   function startQuiz() {
     try {
+      if (quiz.length === QUIZ_LENGTH && answeredCount > 0 && answeredCount < quiz.length) {
+        setError('')
+        setView('quiz')
+        return
+      }
       const next = selectQuizQuestions(pack.questions)
       if (next.length !== QUIZ_LENGTH) {
         throw new Error(`Expected ${QUIZ_LENGTH} questions, got ${next.length}.`)
@@ -755,8 +865,19 @@ export default function App() {
       : null
 
   useEffect(() => {
+    if (!justConfirmedRole.current || view !== 'results' || !roleConfirmed) return
+    justConfirmedRole.current = false
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    document.getElementById('roadmap')?.scrollIntoView({
+      behavior: reduce ? 'auto' : 'smooth',
+      block: 'start',
+    })
+  }, [view, roleConfirmed])
+
+  useEffect(() => {
     if (view !== 'results' || !roleProfile) return
-    track('results_view', {
+    const roleKey = roleProfile.roles.map((r) => r.id || r.name).join('|')
+    trackOnce(`results_view:${roleKey}`, 'results_view', {
       role_count: roleProfile.roles.length,
       roles: roleProfile.roles.map((r) => r.name).join(','),
     })
@@ -799,7 +920,7 @@ export default function App() {
     return () => {
       alive = false
     }
-  }, [user, profile?.selectedRole?.id, view])
+  }, [user, profile?.selectedRole?.id])
 
   const suggestedRolePayload = useMemo(() => {
     if (!roleProfile?.roles?.length) return []
@@ -861,6 +982,7 @@ export default function App() {
         // The role choice is already saved. The trail switch can be retried from the roadmap.
       }
       setRoleConfirmed(true)
+      justConfirmedRole.current = true
       setProfile((p) =>
         p
           ? {
@@ -891,7 +1013,15 @@ export default function App() {
   async function onSignOut() {
     track('sign_out')
     await signOut(auth)
+    appliedUserRef.current = null
+    pendingAuthEvent.current = null
     setProfile(null)
+    setSelectedRoleId('')
+    setRoleConfirmed(false)
+    setAnswers({})
+    setQuiz([])
+    setIndex(0)
+    clearState()
     setView('landing')
   }
 
@@ -921,7 +1051,7 @@ export default function App() {
     })
   }
 
-  if (loading) {
+  if (loading || !authChecked) {
     return (
       <div className="boot">
         <div className="pulse" aria-hidden="true" />
@@ -946,10 +1076,10 @@ export default function App() {
       <Header
         user={user}
         onSignOut={onSignOut}
-        onBrand={view === 'roadmap' ? leaveRoadmap : undefined}
+        onBrand={goHome}
       />
 
-      {error && view !== 'quiz' && (
+      {error && !['quiz', 'invite', 'welcome', 'profile', 'results', 'roadmap'].includes(view) && (
         <div className="wrap" style={{ paddingTop: 16 }}>
           <p className="status" role="alert">
             {error}
@@ -1087,8 +1217,14 @@ export default function App() {
                   onChange={(e) => setInviteInput(e.target.value.toUpperCase())}
                   placeholder="CAMPUS26"
                   autoComplete="off"
+                  aria-invalid={error ? 'true' : undefined}
                 />
               </label>
+              {error && (
+                <p className="form-error" role="alert">
+                  {error} Check the code and try again.
+                </p>
+              )}
               <button type="submit" className="btn dark lg" disabled={submitting}>
                 {submitting ? 'Checking…' : 'Unlock →'}
               </button>
@@ -1118,15 +1254,15 @@ export default function App() {
                   Find <span className="hl">your Ikigai.</span>
                 </h1>
                 <p className="ikigai-lead">
-                  Ikigai is a “reason for being” — where what you love, what you’re good
-                  at, what people need, and what you can earn from meet.
-                </p>
-                <p className="muted ikigai-sub">
-                  Explore maps your curiosity into campus roles — Builders, Hackers,
-                  Creators, and more — so you see paths that fit you.
+                  A short quiz turns what you enjoy into a campus role you can try.
                 </p>
 
                 <div className="welcome-auth">
+                  {error && (
+                    <p className="form-error" role="alert">
+                      {error}
+                    </p>
+                  )}
                   <button
                     type="button"
                     className="btn dark lg welcome-google"
@@ -1314,10 +1450,7 @@ export default function App() {
                   placeholder="10-digit mobile"
                   pattern="[6-9][0-9]{9}"
                 />
-                <span className="field-hint">
-                  Use a valid number — the same one you’ll join / get validated with in the campus
-                  WhatsApp group.
-                </span>
+                <span className="field-hint">For the campus WhatsApp group.</span>
               </label>
               <button type="submit" className="btn dark lg" disabled={submitting}>
                 {submitting ? 'Saving…' : 'Continue to discovery →'}
@@ -1330,7 +1463,11 @@ export default function App() {
       {view === 'intro' && (
         <BoostCard
           boost={introBoost}
-          cta="Start the 30 prompts →"
+          cta={
+            quiz.length === QUIZ_LENGTH && answeredCount > 0 && answeredCount < quiz.length
+              ? 'Continue your quiz →'
+              : 'Start the 30 prompts →'
+          }
           onContinue={startQuiz}
         />
       )}
@@ -1342,9 +1479,6 @@ export default function App() {
               <button type="button" className="linkish" onClick={goBack}>
                 ← Back
               </button>
-              <span className="mono" style={{ fontSize: 10 }}>
-                Your interest mix
-              </span>
               <button type="button" className="linkish" onClick={() => setView('intro')}>
                 Pause
               </button>
@@ -1374,7 +1508,7 @@ export default function App() {
             )}
 
             <div className="q-stack">
-              <article className="q-card">
+              <article className="q-card" key={current.id}>
                 <div className="q-top">
                   <span>Would you enjoy this?</span>
                   <span>
@@ -1405,7 +1539,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <p className="quiz-hint">Tap a feeling. The next card appears automatically.</p>
           </div>
         </section>
       )}
@@ -1413,24 +1546,62 @@ export default function App() {
       {view === 'results' && roleProfile && (
         <section className="results">
           <div className="wrap">
-            <p className="mono" style={{ fontSize: 11, paddingTop: 28 }}>
-              ✳ Explore / complete · {quiz.length || QUIZ_LENGTH} little choices
-            </p>
-
             <div className="result-copy result-lead">
               <p className="eyebrow">Your discovery</p>
               <h1>{roleProfile.title}</h1>
               <p className="desc">{roleProfile.description}</p>
-              <p className="muted" style={{ fontSize: 13, marginTop: 8, maxWidth: '46ch' }}>
-                These are friendly starting points — not diagnoses or fixed labels. Pick the
-                campus role you want to begin exploring.
-              </p>
+              {!(roleConfirmed && chosenRole) && (
+                <p className="muted result-note">
+                  A starting point, not a fixed label. Pick the role you want to try first.
+                </p>
+              )}
               {selectedCollege && collegeCount !== null && (
                 <p className="college-count" style={{ marginTop: 12 }}>
                   {collegeCountCopy(collegeCount, selectedCollege.name)}
                 </p>
               )}
             </div>
+
+            {roleConfirmed && chosenRole && (
+              <section className="waitlist" id="roadmap">
+                <div>
+                  <p className="eyebrow">Next step</p>
+                  <h2 style={{ fontSize: 'clamp(28px, 5vw, 36px)', margin: '8px 0 12px' }}>
+                    {roadmapSummary
+                      ? `Continue your ${chosenRole.name} trail`
+                      : `Start your ${chosenRole.name} trail`}
+                  </h2>
+                  <p className="muted" style={{ fontSize: 14, maxWidth: '48ch' }}>
+                    Ten short steps. Finish one to unlock the next. Notes stay private.
+                  </p>
+                  {roadmapSummary && (
+                    <p className="roadmap-progress" style={{ marginTop: 8 }}>
+                      {roadmapSummary.done || 0} / {roadmapSummary.total || 10} steps saved
+                    </p>
+                  )}
+                </div>
+                <div className="waitlist-form">
+                  <button
+                    type="button"
+                    className="btn dark block"
+                    onClick={() => openRoadmap(chosenRole.id)}
+                  >
+                    {roadmapSummary ? 'Continue your trail →' : 'Start your trail →'}
+                  </button>
+                  {whatsappUrl ? (
+                    <a
+                      className="linkish"
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={onWhatsAppClick}
+                    >
+                      Optional: join the WhatsApp group
+                    </a>
+                  ) : null}
+                </div>
+              </section>
+            )}
 
             {roleProfile.roles.length === 0 ? (
               <div className="mix-panel" style={{ marginTop: 20 }}>
@@ -1447,7 +1618,7 @@ export default function App() {
                 <fieldset className="role-pick" disabled={roleConfirmed && Boolean(profile?.selectedRole?.id)}>
                   <legend className="role-pick-legend">
                     {roleProfile.roles.length === 2
-                      ? 'Choose your starting role. This is a starting point. You can change later.'
+                      ? 'Choose one to start. You can change it later.'
                       : 'Your starting role'}
                   </legend>
                   <div
@@ -1495,25 +1666,21 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="result-actions role-confirm-actions">
+                <div
+                  className={`result-actions role-confirm-actions${
+                    !roleConfirmed || !profile?.selectedRole?.id ? ' is-pending' : ''
+                  }`}
+                >
                   {!roleConfirmed || !profile?.selectedRole?.id ? (
                     <button
                       type="button"
                       className="btn dark lg"
-                      disabled={!selectedRoleId || confirmingRole}
+                      disabled={confirmingRole}
                       onClick={confirmSelectedRole}
                     >
-                      {confirmingRole
-                        ? 'Saving…'
-                        : selectedRoleId
-                          ? 'Continue with this role →'
-                          : 'Pick a role to continue'}
+                      {confirmingRole ? 'Saving…' : 'Continue with this role →'}
                     </button>
-                  ) : (
-                    <p className="mono" style={{ fontSize: 12 }}>
-                      Starting role saved for your roadmap ✳
-                    </p>
-                  )}
+                  ) : null}
                   {roleConfirmed && profile?.selectedRole?.id && (
                     <button
                       type="button"
@@ -1534,7 +1701,7 @@ export default function App() {
 
             {roleConfirmed && chosenRole && (
               <>
-                <div className="result-grid" style={{ marginTop: 28 }}>
+                <div className="result-grid">
                   <section className="mix-panel role-panel">
                     <p className="eyebrow">{chosenRole.name}</p>
                     <h2>Roles in industry</h2>
@@ -1560,46 +1727,6 @@ export default function App() {
                     </div>
                   </section>
                 </div>
-
-                <section className="waitlist" id="roadmap">
-                  <div>
-                    <p className="eyebrow">Roadmap</p>
-                    <h2 style={{ fontSize: 'clamp(28px, 5vw, 36px)', margin: '8px 0 12px' }}>
-                      {roadmapSummary
-                        ? `Continue your ${chosenRole.name} trail`
-                        : `Explore the ${chosenRole.name} trail`}
-                    </h2>
-                    <p className="muted" style={{ fontSize: 14, maxWidth: '48ch' }}>
-                      Ten small steps for {chosenRole.name}. Most take well under an hour. Mark one
-                      done and the next unlocks. Notes stay private.
-                    </p>
-                    {roadmapSummary && (
-                      <p className="roadmap-progress" style={{ marginTop: 8 }}>
-                        {roadmapSummary.done || 0} / {roadmapSummary.total || 10} steps saved
-                      </p>
-                    )}
-                  </div>
-                  <div className="waitlist-form">
-                    <button
-                      type="button"
-                      className="btn dark block"
-                      onClick={() => openRoadmap(chosenRole.id)}
-                    >
-                      {roadmapSummary ? 'Continue roadmap →' : 'Explore this roadmap →'}
-                    </button>
-                    {whatsappUrl ? (
-                      <a
-                        className="linkish"
-                        href={whatsappUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={onWhatsAppClick}
-                      >
-                        Optional: join the WhatsApp campus group
-                      </a>
-                    ) : null}
-                  </div>
-                </section>
               </>
             )}
           </div>

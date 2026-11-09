@@ -216,6 +216,36 @@
 
 .step-close {
   margin-bottom: 8px;
+  min-height: 44px;
+}
+
+.step-done {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 12px;
+  padding: 12px 0 4px;
+  background: linear-gradient(to top, var(--cream) 78%, rgb(254 238 195 / 0));
+}
+
+.step-done .btn {
+  width: 100%;
+}
+
+.step-extra {
+  margin: 8px 0 12px;
+}
+
+.step-extra summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.step-extra p {
+  margin: 8px 0 0;
 }
 
 .step-sheet .btn:disabled,
@@ -316,9 +346,49 @@
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .step-dialog[open] {
+    animation: sheet-in 200ms ease-out;
+  }
+
+  .roadmap-screen {
+    animation: rise-in 200ms ease-out;
+  }
+
+  .roadmap-banner {
+    animation: rise-in 200ms ease-out;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .trail-node,
-  .roadmap-screen .btn {
+  .roadmap-screen .btn,
+  .step-dialog,
+  .roadmap-banner,
+  .roadmap-screen {
     transition: none;
+    animation: none;
   }
 }

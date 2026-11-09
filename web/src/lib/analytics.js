@@ -6,6 +6,7 @@ let analytics = null
 let performance = null
 let quizTrace = null
 let ready = false
+const onceKeys = new Set()
 
 export async function initTelemetry() {
   if (typeof window === 'undefined' || ready) return
@@ -36,8 +37,17 @@ export function track(eventName, params = {}) {
   }
 }
 
+/** Fire at most once per browser tab for a given key (prevents effect re-run spam). */
+export function trackOnce(key, eventName, params = {}) {
+  const id = String(key || eventName)
+  if (!id || onceKeys.has(id)) return false
+  onceKeys.add(id)
+  track(eventName, params)
+  return true
+}
+
 export function trackScreen(screenName) {
-  track('screen_view', {
+  trackOnce(`screen:${screenName}`, 'screen_view', {
     firebase_screen: screenName,
     firebase_screen_class: 'DiscoveryApp',
     screen_name: screenName,

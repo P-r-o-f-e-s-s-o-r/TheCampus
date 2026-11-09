@@ -33,6 +33,37 @@ const USERS = db.collection("users");
 /** Always-allowed admin Google accounts (in addition to Firestore `admins`). */
 const BOOTSTRAP_ADMIN_EMAILS = new Set(["sapienscampus@gmail.com"]);
 
+/** Short TTL cache for hot public reads (questions / colleges / college stats). */
+const PUBLIC_READ_TTL_MS = 60_000;
+const STATS_READ_TTL_MS = 30_000;
+const publicReadCache = new Map();
+let questionsSeeded = false;
+
+function getPublicCache(key, ttlMs = PUBLIC_READ_TTL_MS) {
+  const hit = publicReadCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+  return null;
+}
+
+function setPublicCache(key, value) {
+  publicReadCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+function bustPublicCache(...keys) {
+  if (!keys.length) {
+    publicReadCache.clear();
+    return;
+  }
+  for (const key of keys) publicReadCache.delete(key);
+}
+
+function clampPageSize(raw, { fallback = 25, max = 50 } = {}) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(max, Math.floor(n));
+}
+
 const DEFAULT_ROLE_MAP = {
   R: {
     id: "builders",
@@ -327,8 +358,12 @@ async function requireAdmin(req, res, next) {
 }
 
 async function seedFromTemplateIfEmpty() {
+  if (questionsSeeded) return false;
   const existing = await QUESTIONS.limit(1).get();
-  if (!existing.empty) return false;
+  if (!existing.empty) {
+    questionsSeeded = true;
+    return false;
+  }
 
   const packPath = path.join(__dirname, "data", "questions.template.json");
   const pack = JSON.parse(fs.readFileSync(packPath, "utf8"));
@@ -367,6 +402,8 @@ async function seedFromTemplateIfEmpty() {
   });
 
   await batch.commit();
+  questionsSeeded = true;
+  bustPublicCache("questions");
   return true;
 }
 
@@ -376,6 +413,11 @@ router.get("/health", (_req, res) => {
 
 router.get("/questions", async (_req, res) => {
   try {
+    const cached = getPublicCache("questions");
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      return res.json(cached);
+    }
     await seedFromTemplateIfEmpty();
     const [metaSnap, questionSnap] = await Promise.all([
       QUIZ_META.get(),
@@ -386,7 +428,7 @@ router.get("/questions", async (_req, res) => {
     if (!pack.questions.length) {
       return res.status(503).json({ ok: false, error: "Questions are not seeded yet" });
     }
-    res.json({
+    const body = {
       ok: true,
       version: pack.version,
       areas: pack.areas,
@@ -404,7 +446,10 @@ router.get("/questions", async (_req, res) => {
         scene,
         sortOrder,
       })),
-    });
+    };
+    setPublicCache("questions", body);
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    res.json(body);
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to load questions" });
@@ -447,6 +492,11 @@ router.post("/invites/check", async (req, res) => {
 
 router.get("/colleges", async (_req, res) => {
   try {
+    const cached = getPublicCache("colleges");
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+      return res.json(cached);
+    }
     const [collegeSnap, deptSnap, metaSnap] = await Promise.all([
       COLLEGES.get(),
       DEPARTMENTS.get(),
@@ -478,12 +528,15 @@ router.get("/colleges", async (_req, res) => {
       .filter((c) => c.active)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name));
 
-    res.json({
+    const body = {
       ok: true,
       colleges,
       departments,
       whatsappUrl: String(meta.whatsappUrl || ""),
-    });
+    };
+    setPublicCache("colleges", body);
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    res.json(body);
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to list colleges" });
@@ -496,8 +549,17 @@ router.get("/colleges/:id/stats", async (req, res) => {
     if (!collegeId) {
       return res.status(400).json({ ok: false, error: "College id required" });
     }
+    const cacheKey = `college-stats:${collegeId}`;
+    const cached = getPublicCache(cacheKey, STATS_READ_TTL_MS);
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+      return res.json(cached);
+    }
     const snap = await USERS.where("collegeId", "==", collegeId).count().get();
-    res.json({ ok: true, collegeId, signedUpCount: snap.data().count || 0 });
+    const body = { ok: true, collegeId, signedUpCount: snap.data().count || 0 };
+    setPublicCache(cacheKey, body);
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    res.json(body);
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to load college stats" });
@@ -594,12 +656,14 @@ router.post("/me/profile", requireStudent, async (req, res) => {
 
     const userRef = USERS.doc(req.student.uid);
     const inviteRef = INVITE_CODES.doc(inviteCode);
+    let prior = null;
 
     try {
       await db.runTransaction(async (tx) => {
         const userSnap = await tx.get(userRef);
         const inviteSnap = await tx.get(inviteRef);
         const existing = userSnap.exists ? userSnap.data() : null;
+        prior = existing;
         const alreadyBound =
           existing?.inviteCode && String(existing.inviteCode).toUpperCase() === inviteCode;
 
@@ -659,21 +723,22 @@ router.post("/me/profile", requireStudent, async (req, res) => {
       return res.status(status).json({ ok: false, error: message, code });
     }
 
-    const saved = await userRef.get();
-    const savedData = saved.data() || {};
+    // Reuse transaction snapshot — no extra Firestore read.
     res.json({
       ok: true,
       user: {
-        uid: saved.id,
-        email: savedData.email || req.student.email,
-        displayName: savedData.displayName || "",
-        inviteCode: savedData.inviteCode || "",
-        collegeId: savedData.collegeId || "",
-        departmentId: savedData.departmentId || "",
-        passoutYear: savedData.passoutYear || null,
-        mobile: savedData.mobile || "",
-        roles: savedData.roles || [],
-        hasAnswers: Boolean(savedData.answers),
+        uid: req.student.uid,
+        email: req.student.email || "",
+        displayName,
+        inviteCode,
+        collegeId,
+        departmentId,
+        passoutYear: Math.floor(passoutYear),
+        mobile,
+        roles: prior?.roles || [],
+        selectedRole: prior?.selectedRole || null,
+        scores: prior?.scores || null,
+        hasAnswers: Boolean(prior?.answers),
       },
     });
   } catch (err) {
@@ -786,11 +851,14 @@ router.post("/waitlist", async (req, res) => {
     }
 
     const existing = await WAITLIST.where("email", "==", email).limit(1).get();
+    const normalizedAnswers = answers && typeof answers === "object" ? answers : null;
+    const normalizedScores = scores && typeof scores === "object" ? scores : null;
     const payload = {
       email,
       consent: true,
-      answers: answers && typeof answers === "object" ? answers : null,
-      scores: scores && typeof scores === "object" ? scores : null,
+      answers: normalizedAnswers,
+      scores: normalizedScores,
+      hasAnswers: Boolean(normalizedAnswers),
       updatedAt: FieldValue.serverTimestamp(),
     };
 
@@ -810,9 +878,19 @@ router.post("/waitlist", async (req, res) => {
   }
 });
 
-router.get("/admin/waitlist", requireAdmin, async (_req, res) => {
+router.get("/admin/waitlist", requireAdmin, async (req, res) => {
   try {
-    const snap = await WAITLIST.orderBy("createdAt", "desc").limit(500).get();
+    const limit = clampPageSize(req.query.limit, { fallback: 25, max: 50 });
+    const cursor = String(req.query.cursor || "").trim();
+    let query = WAITLIST.orderBy("createdAt", "desc").limit(limit);
+    if (cursor) {
+      const cursorSnap = await WAITLIST.doc(cursor).get();
+      if (cursorSnap.exists) {
+        query = query.startAfter(cursorSnap);
+      }
+    }
+
+    const [snap, totalSnap] = await Promise.all([query.get(), WAITLIST.count().get()]);
     const entries = snap.docs.map((doc) => {
       const data = doc.data();
       return {
@@ -820,12 +898,20 @@ router.get("/admin/waitlist", requireAdmin, async (_req, res) => {
         email: data.email,
         consent: data.consent,
         scores: data.scores || null,
-        hasAnswers: Boolean(data.answers),
+        hasAnswers: data.hasAnswers === true || Boolean(data.answers),
         createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
         updatedAt: data.updatedAt?.toDate?.()?.toISOString?.() || null,
       };
     });
-    res.json({ ok: true, entries });
+    const nextCursor = snap.docs.length === limit ? snap.docs[snap.docs.length - 1].id : null;
+    res.json({
+      ok: true,
+      entries,
+      pageSize: limit,
+      nextCursor,
+      total: totalSnap.data().count || 0,
+      answeredOnPage: entries.filter((row) => row.hasAnswers).length,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to list waitlist" });
@@ -860,6 +946,7 @@ router.post("/admin/questions", requireAdmin, async (req, res) => {
     }
     question.createdAt = FieldValue.serverTimestamp();
     await QUESTIONS.doc(question.id).set(question, { merge: true });
+    bustPublicCache("questions");
     res.status(201).json({ ok: true, question });
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, error: err.message || "Create failed" });
@@ -875,6 +962,7 @@ router.put("/admin/questions/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Question not found" });
     }
     await ref.set(question, { merge: true });
+    bustPublicCache("questions");
     res.json({ ok: true, question });
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, error: err.message || "Update failed" });
@@ -889,6 +977,7 @@ router.delete("/admin/questions/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Question not found" });
     }
     await ref.delete();
+    bustPublicCache("questions");
     res.json({ ok: true });
   } catch (_err) {
     res.status(500).json({ ok: false, error: "Delete failed" });
@@ -912,6 +1001,7 @@ router.post("/admin/questions/batch-delete", requireAdmin, async (req, res) => {
       });
       await batch.commit();
     }
+    bustPublicCache("questions");
     res.json({ ok: true, deleted: ids.length });
   } catch (err) {
     console.error(err);
@@ -1038,6 +1128,7 @@ router.post("/admin/questions/import", requireAdmin, async (req, res) => {
     });
 
     await batch.commit();
+    bustPublicCache("questions", "colleges");
     res.json({
       ok: true,
       imported: pack.questions.length,
@@ -1187,6 +1278,7 @@ router.post("/admin/colleges", requireAdmin, async (req, res) => {
       return res.status(409).json({ ok: false, error: "College id already exists" });
     }
     await ref.set({ ...college, createdAt: FieldValue.serverTimestamp() });
+    bustPublicCache("colleges");
     res.status(201).json({ ok: true, college });
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, error: err.message || "Create failed" });
@@ -1202,6 +1294,7 @@ router.put("/admin/colleges/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ ok: false, error: "College not found" });
     }
     await ref.set(college, { merge: true });
+    bustPublicCache("colleges");
     res.json({ ok: true, college });
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, error: err.message || "Update failed" });
@@ -1217,6 +1310,7 @@ router.post("/admin/departments", requireAdmin, async (req, res) => {
       return res.status(409).json({ ok: false, error: "Department id already exists" });
     }
     await ref.set({ ...department, createdAt: FieldValue.serverTimestamp() });
+    bustPublicCache("colleges");
     res.status(201).json({ ok: true, department });
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, error: err.message || "Create failed" });
@@ -1232,6 +1326,7 @@ router.put("/admin/departments/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Department not found" });
     }
     await ref.set(department, { merge: true });
+    bustPublicCache("colleges");
     res.json({ ok: true, department });
   } catch (err) {
     res.status(err.status || 500).json({ ok: false, error: err.message || "Update failed" });
@@ -1270,6 +1365,7 @@ router.put("/admin/campus", requireAdmin, async (req, res) => {
       patch.roleMap = req.body.roleMap;
     }
     await QUIZ_META.set(patch, { merge: true });
+    bustPublicCache("questions", "colleges");
     res.json({ ok: true, campus: { whatsappUrl, boosts: patch.boosts, roleMap: patch.roleMap } });
   } catch (err) {
     console.error(err);
@@ -1277,9 +1373,19 @@ router.put("/admin/campus", requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/admin/users", requireAdmin, async (_req, res) => {
+router.get("/admin/users", requireAdmin, async (req, res) => {
   try {
-    const snap = await USERS.orderBy("createdAt", "desc").limit(500).get();
+    const limit = clampPageSize(req.query.limit, { fallback: 25, max: 50 });
+    const cursor = String(req.query.cursor || "").trim();
+    let query = USERS.orderBy("createdAt", "desc").limit(limit);
+    if (cursor) {
+      const cursorSnap = await USERS.doc(cursor).get();
+      if (cursorSnap.exists) {
+        query = query.startAfter(cursorSnap);
+      }
+    }
+
+    const [snap, totalSnap] = await Promise.all([query.get(), USERS.count().get()]);
     const users = snap.docs.map((doc) => {
       const data = doc.data();
       return {
@@ -1297,7 +1403,14 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
         createdAt: data.createdAt?.toDate?.()?.toISOString?.() || null,
       };
     });
-    res.json({ ok: true, users });
+    const nextCursor = snap.docs.length === limit ? snap.docs[snap.docs.length - 1].id : null;
+    res.json({
+      ok: true,
+      users,
+      pageSize: limit,
+      nextCursor,
+      total: totalSnap.data().count || 0,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ ok: false, error: "Failed to list users" });

@@ -15,7 +15,7 @@ import {
 import './roadmap.css'
 
 const FIRST_STEP_NOTE =
-  'Start small. You do not need previous experience. Keep this output for yourself; notes and evidence are optional and private. Use the task above, tick the checklist when you have tried it, then choose Mark as done. Your next step will unlock immediately. If the link will not load, follow the task here. Taking longer is fine.'
+  'Start small. Tick the list when you have tried it, then mark this step done. The next one unlocks. If the link will not open, use the task here.'
 
 function newOp() {
   return crypto.randomUUID()
@@ -102,21 +102,26 @@ export default function RoadmapView({
     async function load() {
       setLoading(true)
       setLoadError('')
+      setCountsState('loading')
       try {
-        let owner = null
-        if (user) {
-          owner = await fetchMyRoadmap()
-          if (!alive) return
-          setMine(owner)
-        } else if (alive) {
-          setMine(null)
-        }
-        const saved = (owner?.trails || []).filter((item) => item.roleId === roleId && !item.missingContent)
-        const preferred = saved.find((item) => item.active) || saved[saved.length - 1]
-        const data = await fetchRoadmap(roleId, preferred?.version)
+        // Owner progress + published trail content in parallel (latest version first).
+        const ownerPromise = user ? fetchMyRoadmap() : Promise.resolve(null)
+        const latestPromise = fetchRoadmap(roleId)
+        const [owner, latest] = await Promise.all([ownerPromise, latestPromise])
         if (!alive) return
+
+        setMine(owner)
+        const saved = (owner?.trails || []).filter(
+          (item) => item.roleId === roleId && !item.missingContent
+        )
+        const preferred = saved.find((item) => item.active) || saved[saved.length - 1]
+        let data = latest
+        if (preferred?.version && preferred.version !== latest?.role?.version) {
+          data = await fetchRoadmap(roleId, preferred.version)
+          if (!alive) return
+        }
         setPack(data)
-        setCountsState('loading')
+
         try {
           const nextCounts = await fetchRoadmapCounts(roleId, data.role.version)
           if (!alive) return
@@ -125,12 +130,15 @@ export default function RoadmapView({
         } catch (err) {
           if (!alive) return
           setCounts(null)
-          setCountsState(err.code === 'counts_unavailable' || err.status === 503 ? 'unavailable' : 'unavailable')
+          setCountsState(
+            err.code === 'counts_unavailable' || err.status === 503 ? 'unavailable' : 'unavailable'
+          )
         }
       } catch (err) {
         if (!alive) return
         setPack(null)
         setLoadError(err.message || 'This trail could not be loaded.')
+        setCountsState('unavailable')
       } finally {
         if (alive) setLoading(false)
       }
@@ -468,7 +476,6 @@ export default function RoadmapView({
             <header className="roadmap-hero">
               {avatar && <img src={avatar.src} alt={avatar.alt} width="120" height="120" />}
               <div>
-                <p className="mono">Version {role.version}</p>
                 <h1 id={titleId}>
                   {role.title} <span className="roadmap-animal">{role.avatar}</span>
                 </h1>
@@ -525,9 +532,10 @@ export default function RoadmapView({
               </p>
             )}
 
+            {(countsState === 'unavailable' || (countsState === 'ready' && counts?.finished > 0)) && (
             <div className="count-note">
               {countsState === 'unavailable' && <p role="status">Counts unavailable</p>}
-              {countsState === 'ready' && counts && (
+              {countsState === 'ready' && counts && counts.finished > 0 && (
                 <>
                   <p>
                     <strong>{counts.finished} finished this trail</strong>
@@ -545,6 +553,7 @@ export default function RoadmapView({
                 </>
               )}
             </div>
+            )}
 
             <ol className="trail-path">
               {role.steps.map((item) => {
@@ -568,9 +577,9 @@ export default function RoadmapView({
                         <span>
                           {item.type} · {item.estimateMinutes} min · {stateLabel(state)}
                         </span>
-                        {countsState === 'ready' && count && (
+                        {countsState === 'ready' && count && (count.current > 0 || count.completed > 0) && (
                           <span>
-                            {count.current} students currently here · {count.completed} students have completed this step
+                            {count.current} {count.current === 1 ? 'student' : 'students'} here now · {count.completed} finished this step
                           </span>
                         )}
                         {countsState === 'unavailable' && <span>Counts unavailable</span>}
@@ -664,7 +673,7 @@ export default function RoadmapView({
             </h2>
             <p className="step-goal">{step.goal}</p>
             <p>
-              <strong>{step.estimateMinutes} minutes</strong> of active time, including the resource slice. {step.estimateLabel} This is not a timer.
+              <strong>{step.estimateMinutes} min.</strong> Take the time you need — this is not a timer.
             </p>
             {step.order === 1 && <p className="first-note">{FIRST_STEP_NOTE}</p>}
             <h3>Your task</h3>
@@ -673,6 +682,23 @@ export default function RoadmapView({
               <strong>Keep this: </strong>
               {step.requiredOutput}
             </p>
+            <h3>Resource</h3>
+            <p>
+              <a href={step.resource.url} target="_blank" rel="noreferrer noopener">
+                {step.resource.title}
+                <span className="sr-only"> (opens {step.resource.publisher} in a new tab)</span>
+              </a>
+            </p>
+            <p>Opens in a new tab. It does not mark this step done.</p>
+            <p>
+              <strong>Read or watch only: </strong>
+              {step.resource.slice}
+            </p>
+            <details className="step-extra">
+              <summary>If the link does not open</summary>
+              <p>{step.resource.accessNote}</p>
+              <p>{step.fallback}</p>
+            </details>
             <fieldset className="check-list" disabled={stepState === 'completed'}>
               <legend>Done when</legend>
               {step.checklist.map((item, index) => (
@@ -696,30 +722,65 @@ export default function RoadmapView({
                 )}
               </p>
             )}
-            <h3>Resource</h3>
-            <p>
-              <a href={step.resource.url} target="_blank" rel="noreferrer noopener">
-                {step.resource.title}
-                <span className="sr-only"> (opens {step.resource.publisher} in a new tab)</span>
-              </a>
-            </p>
-            <p>Opens {step.resource.publisher} in a new tab. Opening it does not mark this step done.</p>
-            <p>
-              <strong>Read or watch only: </strong>
-              {step.resource.slice}
-            </p>
-            <p>{step.resource.accessNote}</p>
-            <p className="fallback">{step.fallback}</p>
+            {savedBanner?.finished && (
+              <p className="roadmap-banner" role="status">
+                Trail complete. This is exploration, not a certificate or a job offer.
+              </p>
+            )}
+            {savedBanner?.next && (
+              <div className="roadmap-banner" role="status">
+                <p>Step saved. Next: {savedBanner.next.title}</p>
+                <button
+                  type="button"
+                  className="btn dark"
+                  onClick={() => {
+                    setSavedBanner(null)
+                    onOpenStep(savedBanner.next.id)
+                  }}
+                >
+                  Continue
+                </button>
+              </div>
+            )}
+            <div className="step-done">
+            <p id="done-reason">{doneReason}</p>
+            <button
+              type="button"
+              className="btn dark lg"
+              disabled={!canComplete}
+              aria-describedby="done-reason"
+              onClick={markDone}
+            >
+              {busy ? 'Saving…' : 'Mark as done'}
+            </button>
+            </div>
+            {stepState === 'completed' && activeHere && (
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  const later = role.steps.filter((item) => item.order >= step.order)
+                  setConfirm({
+                    type: 'undo',
+                    stepId: step.id,
+                    title: `Undo “${step.title}”?`,
+                    body: `This also marks ${later.map((item) => item.title).join(', ')} as not done. Notes and evidence stay. Earlier steps stay done.`,
+                  })
+                }}
+              >
+                Undo this step
+              </button>
+            )}
             <h3>Private notes</h3>
             <p className="note-warning">
-              Only you can read this. Do not store passwords or anyone else’s personal information. Mentors, classmates, and content admins do not see it.
+              Only you can read this. Don’t add passwords or someone else’s personal information.
             </p>
             <label className="stack-label">
               Notes
               <textarea
                 value={noteText}
                 maxLength={4000}
-                rows={5}
+                rows={3}
                 onChange={(event) => {
                   setNoteText(event.target.value)
                   queueNotes(event.target.value, evidence)
@@ -772,53 +833,6 @@ export default function RoadmapView({
                   Keep mine
                 </button>
               </div>
-            )}
-            {savedBanner?.finished && (
-              <p className="roadmap-banner" role="status">
-                Trail complete. This is exploration, not a certificate or a job offer.
-              </p>
-            )}
-            {savedBanner?.next && (
-              <div className="roadmap-banner" role="status">
-                <p>Step saved. Next: {savedBanner.next.title}</p>
-                <button
-                  type="button"
-                  className="btn dark"
-                  onClick={() => {
-                    setSavedBanner(null)
-                    onOpenStep(savedBanner.next.id)
-                  }}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-            <p id="done-reason">{doneReason}</p>
-            <button
-              type="button"
-              className="btn dark lg"
-              disabled={!canComplete}
-              aria-describedby="done-reason"
-              onClick={markDone}
-            >
-              {busy ? 'Saving…' : 'Mark as done'}
-            </button>
-            {stepState === 'completed' && activeHere && (
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  const later = role.steps.filter((item) => item.order >= step.order)
-                  setConfirm({
-                    type: 'undo',
-                    stepId: step.id,
-                    title: `Undo “${step.title}”?`,
-                    body: `This also marks ${later.map((item) => item.title).join(', ')} as not done. Notes and evidence stay. Earlier steps stay done.`,
-                  })
-                }}
-              >
-                Undo this step
-              </button>
             )}
           </div>
         )}
