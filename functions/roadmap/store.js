@@ -96,9 +96,11 @@ class FirestoreStore {
     this.db = db;
     this.privateCol = db.collection("roadmapPrivate");
     this.countsCol = db.collection("roadmapCounts");
+    this.authorCol = db.collection("roadmapAuthoring");
   }
 
   ref(key) {
+    if (key.startsWith("a:")) return this.authorCol.doc(key.slice(2).replace(/:/g, "__"));
     if (key.startsWith("c:")) return this.countsCol.doc(key.slice(2).replace(/:/g, "__"));
     if (key.startsWith("p:")) {
       const rest = key.slice(2);

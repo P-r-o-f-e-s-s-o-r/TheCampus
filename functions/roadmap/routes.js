@@ -4,7 +4,7 @@ const express = require("express");
 const { FieldValue } = require("firebase-admin/firestore");
 const { RoadmapService, RoadmapError } = require("./service");
 const { FirestoreStore } = require("./store");
-const { AVATARS, loadSeed } = require("./validate");
+const { AVATARS, loadSeed, readSeed } = require("./validate");
 
 function createRouter({
   service,
@@ -12,6 +12,7 @@ function createRouter({
   requireAdmin,
   resolveLearner,
   touchUser,
+  loadProfiles,
   countsTtlMs = 30000,
 }) {
   const router = express.Router();
@@ -28,6 +29,7 @@ function createRouter({
   function handle(fn) {
     return async (req, res) => {
       try {
+        if (typeof service.hydrate === "function") await service.hydrate();
         await fn(req, res);
       } catch (err) {
         if (err instanceof RoadmapError) {
@@ -225,6 +227,34 @@ function createRouter({
     });
   }));
 
+  router.get("/admin/roadmaps/learners", requireAdmin, handle(async (_req, res) => {
+    const board = await service.learnerBoard();
+    if (typeof loadProfiles === "function") {
+      const profiles = await loadProfiles(board.learners.map((row) => row.uid));
+      for (const row of board.learners) {
+        const profile = profiles?.[row.uid] || {};
+        row.displayName = profile.displayName || "";
+        row.email = profile.email || "";
+        row.collegeId = profile.collegeId || "";
+      }
+    }
+    res.json(board);
+  }));
+
+  router.get("/admin/roadmaps/editor/:roleId", requireAdmin, handle(async (req, res) => {
+    res.json(service.editorFor(req.params.roleId));
+  }));
+
+  router.put("/admin/roadmaps/editor/:roleId", requireAdmin, handle(async (req, res) => {
+    res.json(await service.saveDraft(req.params.roleId, req.body?.role));
+  }));
+
+  router.post("/admin/roadmaps/editor/:roleId/publish", requireAdmin, handle(async (req, res) => {
+    const result = await service.publish(req.params.roleId, req.body?.role, req.body?.asNewVersion === true);
+    bust();
+    res.json(result);
+  }));
+
   router.post("/admin/roadmaps/reconcile", requireAdmin, handle(async (_req, res) => {
     const result = await service.reconcile();
     bust();
@@ -253,8 +283,9 @@ function createRouter({
 }
 
 function createProductionRouter({ db, users, admins, bootstrapEmails, requireStudent, requireAdmin }) {
+  const raw = readSeed();
   const catalog = loadSeed();
-  const service = new RoadmapService({ store: new FirestoreStore(db), catalog });
+  const service = new RoadmapService({ store: new FirestoreStore(db), catalog, raw });
 
   async function resolveLearner(req) {
     const snap = await users.doc(req.student.uid).get();
@@ -280,12 +311,28 @@ function createProductionRouter({ db, users, admins, bootstrapEmails, requireStu
     await users.doc(uid).set({ ...patch, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
   }
 
+  async function loadProfiles(uids) {
+    const unique = [...new Set(uids)].slice(0, 200);
+    const snaps = await Promise.all(unique.map((uid) => users.doc(uid).get()));
+    const profiles = {};
+    snaps.forEach((snap, index) => {
+      const data = snap.exists ? snap.data() || {} : {};
+      profiles[unique[index]] = {
+        email: data.email || "",
+        displayName: data.displayName || "",
+        collegeId: data.collegeId || "",
+      };
+    });
+    return profiles;
+  }
+
   return createRouter({
     service,
     requireStudent,
     requireAdmin,
     resolveLearner,
     touchUser,
+    loadProfiles,
   });
 }
 

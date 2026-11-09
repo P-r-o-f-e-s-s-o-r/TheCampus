@@ -104,5 +104,18 @@ export const listUsers = ({ limit = 25, cursor = '' } = {}) => {
 }
 
 export const getRoadmapCatalog = () => request('/api/admin/roadmaps')
+export const getRoadmapEditor = (roleId) =>
+  request(`/api/admin/roadmaps/editor/${encodeURIComponent(roleId)}`)
+export const saveRoadmapDraft = (roleId, role) =>
+  request(`/api/admin/roadmaps/editor/${encodeURIComponent(roleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ role }),
+  })
+export const publishRoadmap = (roleId, role, asNewVersion) =>
+  request(`/api/admin/roadmaps/editor/${encodeURIComponent(roleId)}/publish`, {
+    method: 'POST',
+    body: JSON.stringify({ role, asNewVersion }),
+  })
+export const listRoadmapLearners = () => request('/api/admin/roadmaps/learners')
 export const reconcileRoadmaps = () =>
   request('/api/admin/roadmaps/reconcile', { method: 'POST', body: JSON.stringify({}) })

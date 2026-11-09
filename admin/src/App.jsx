@@ -637,7 +637,7 @@ export default function App() {
     roadmaps: {
       mono: 'Trails',
       title: 'Roadmaps',
-      desc: 'Published role trails. Student notes stay private.',
+      desc: 'Build each role trail, then see who is on which step. Student notes stay private.',
       sticker: 'Versioned ✳',
     },
   }[tab] || {

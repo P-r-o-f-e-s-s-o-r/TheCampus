@@ -1057,3 +1057,57 @@ td.email {
     min-height: 32px;
   }
 }
+
+.roadmap-admin .btn {
+  min-height: 44px;
+}
+
+.roadmap-modes,
+.role-switch,
+.roadmap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.roadmap-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.step-picker ol {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.step-picker button {
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1.5px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.step-picker button.active {
+  background: var(--y);
+}
+
+.roadmap-editor fieldset {
+  border: 1.5px solid var(--ink);
+  padding: 12px;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .roadmap-editor {
+    grid-template-columns: 1fr;
+  }
+}

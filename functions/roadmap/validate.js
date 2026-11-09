@@ -118,10 +118,38 @@ function validateContent(raw) {
       if (!isHttps(resource.url)) {
         push(errors, `${at} resource URL must be https with no credentials`);
       }
+      const links = Array.isArray(step.links) ? step.links : [];
+      if (links.length > 2) push(errors, `${at} can have at most two extra links`);
+      const normalizedLinks = links.map((link, linkIndex) => {
+        const linkAt = `${at}.links[${linkIndex}]`;
+        if (!link || typeof link !== "object") {
+          push(errors, `${linkAt} is missing`);
+          return null;
+        }
+        if (link.kind !== "article" && link.kind !== "video") {
+          push(errors, `${linkAt} kind must be article or video`);
+        }
+        if (!link.title || !link.publisher) {
+          push(errors, `${linkAt} needs a title and publisher`);
+        }
+        if (!isHttps(link.url)) {
+          push(errors, `${linkAt} URL must be https with no credentials`);
+        }
+        return {
+          kind: link.kind === "video" ? "video" : "article",
+          publisher: String(link.publisher || "").trim(),
+          title: String(link.title || "").trim(),
+          url: String(link.url || "").trim(),
+          slice: String(link.slice || "").trim(),
+        };
+      });
+      const section = String(step.section || "").trim();
+      if (section.length > 24) push(errors, `${at} section name is too long`);
       if (!step) return null;
       return {
         id: step.id,
         order,
+        section: section || "Trail",
         type: String(step.type || "").trim(),
         title: String(step.title || "").trim(),
         goal: String(step.goal || "").trim(),
@@ -141,6 +169,7 @@ function validateContent(raw) {
           slice: String(resource.slice || "").trim(),
           accessNote: String(resource.accessNote || "").trim(),
         },
+        links: normalizedLinks.filter(Boolean),
         fallback: String(step.fallback || "").trim(),
         completionNote:
           step.completion || "Self-attested checklist. This is your own record, not a graded pass.",
@@ -201,8 +230,12 @@ function validateContent(raw) {
   };
 }
 
+function readSeed(file = path.join(__dirname, "..", "data", "roadmap-content.json")) {
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
 function loadSeed(file = path.join(__dirname, "..", "data", "roadmap-content.json")) {
-  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  const raw = readSeed(file);
   const result = validateContent(raw);
   if (!result.ok) {
     const error = new Error(`Roadmap seed is invalid:\n${result.errors.join("\n")}`);
@@ -228,6 +261,7 @@ module.exports = {
   MIN_ESTIMATE,
   MAX_ESTIMATE,
   validateContent,
+  readSeed,
   loadSeed,
   indexCatalog,
 };

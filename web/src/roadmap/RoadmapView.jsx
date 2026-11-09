@@ -447,6 +447,13 @@ export default function RoadmapView({
   const canComplete = activeHere && stepState === 'available' && allChecked && !busy
 
   const otherRoles = (profile?.roles || []).filter((item) => item.id !== roleId)
+  const groups = []
+  for (const item of role?.steps || []) {
+    const name = item.section || 'Trail'
+    const last = groups[groups.length - 1]
+    if (!last || last.name !== name) groups.push({ name, steps: [item] })
+    else last.steps.push(item)
+  }
 
   return (
     <section className="roadmap-screen" aria-labelledby={titleId}>
@@ -556,39 +563,46 @@ export default function RoadmapView({
             )}
 
             <ol className="trail-path">
-              {role.steps.map((item) => {
-                const state = progressSteps.find((entry) => entry.id === item.id)?.state || 'locked'
-                const count = counts?.steps?.find((entry) => entry.id === item.id)
-                return (
-                  <li key={item.id}>
-                    <button
-                      id={`step-opener-${item.id}`}
-                      type="button"
-                      className={`trail-node state-${state}`}
-                      aria-current={state === 'available' ? 'step' : undefined}
-                      onClick={(event) => {
-                        openerRef.current = event.currentTarget
-                        onOpenStep(item.id)
-                      }}
-                    >
-                      <span className="node-order">{item.order}</span>
-                      <span className="node-copy">
-                        <strong>{item.title}</strong>
-                        <span>
-                          {item.type} · {item.estimateMinutes} min · {stateLabel(state)}
-                        </span>
-                        {countsState === 'ready' && count && (count.current > 0 || count.completed > 0) && (
-                          <span>
-                            {count.current} {count.current === 1 ? 'student' : 'students'} here now · {count.completed} finished this step
-                          </span>
-                        )}
-                        {countsState === 'unavailable' && <span>Counts unavailable</span>}
-                      </span>
-                    </button>
-                    <span className="trail-edge" aria-hidden="true" />
-                  </li>
-                )
-              })}
+              {groups.map((group) => (
+                <li key={group.name} className="trail-group">
+                  <h3 className="trail-section">{group.name}</h3>
+                  <ol>
+                    {group.steps.map((item) => {
+                      const state = progressSteps.find((entry) => entry.id === item.id)?.state || 'locked'
+                      const count = counts?.steps?.find((entry) => entry.id === item.id)
+                      return (
+                        <li key={item.id}>
+                          <button
+                            id={`step-opener-${item.id}`}
+                            type="button"
+                            className={`trail-node state-${state}`}
+                            aria-current={state === 'available' ? 'step' : undefined}
+                            onClick={(event) => {
+                              openerRef.current = event.currentTarget
+                              onOpenStep(item.id)
+                            }}
+                          >
+                            <span className="node-order">{item.order}</span>
+                            <span className="node-copy">
+                              <strong>{item.title}</strong>
+                              <span>
+                                {item.estimateMinutes} min · {stateLabel(state)}
+                              </span>
+                              {countsState === 'ready' && count && (count.current > 0 || count.completed > 0) && (
+                                <span>
+                                  {count.current} {count.current === 1 ? 'student' : 'students'} here now · {count.completed} finished this step
+                                </span>
+                              )}
+                              {countsState === 'unavailable' && <span>Counts unavailable</span>}
+                            </span>
+                          </button>
+                          <span className="trail-edge" aria-hidden="true" />
+                        </li>
+                      )
+                    })}
+                  </ol>
+                </li>
+              ))}
             </ol>
 
             <div className="roadmap-actions">
@@ -694,6 +708,26 @@ export default function RoadmapView({
               <strong>Read or watch only: </strong>
               {step.resource.slice}
             </p>
+            {step.links?.length > 0 && (
+              <>
+                <h3>Also useful</h3>
+                <ul className="resource-links">
+                  {step.links.map((link) => (
+                    <li key={link.url}>
+                      <a href={link.url} target="_blank" rel="noreferrer noopener">
+                        {link.title}
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                      <span>
+                        {link.kind === 'video' ? 'Video' : 'Article'}
+                        {link.publisher ? ` · ${link.publisher}` : ''}
+                        {link.slice ? `. ${link.slice}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <details className="step-extra">
               <summary>If the link does not open</summary>
               <p>{step.resource.accessNote}</p>

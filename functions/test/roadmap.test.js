@@ -86,6 +86,12 @@ test("seed has six avatars, ten steps, and checked https resources", () => {
       const url = step.primaryResource.url;
       assert.ok(byUrl.has(url), `missing source check for ${url}`);
       assert.equal(rejected.has(url), false, url);
+      for (const link of step.links || []) {
+        assert.ok(byUrl.has(link.url), `missing source check for ${link.url}`);
+        assert.equal(rejected.has(link.url), false, link.url);
+        assert.ok(link.kind === "article" || link.kind === "video");
+      }
+      assert.ok(step.section && step.section.length <= 24);
     }
   }
 });
@@ -725,4 +731,59 @@ test("http routes isolate students and ignore client count flags", async () => {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("publishing a trail keeps the old version and hides private notes", async () => {
+  const raw = JSON.parse(fs.readFileSync(seedPath, "utf8"));
+  const store = new MemoryStore();
+  let tick = 0;
+  const service = new RoadmapService({
+    store,
+    catalog: loadSeed(),
+    raw,
+    now: () => new Date(Date.UTC(2026, 10, 9, 1, 0, tick++)).toISOString(),
+  });
+  const op = () => `publish-${String(tick).padStart(8, "0")}`;
+  const editor = service.editorFor("builders");
+  const role = structuredClone(editor.role);
+  role.steps[0].title = "Notice one campus friction";
+  const published = await service.publish("builders", role, false);
+  assert.equal(published.version, 1);
+  assert.equal(published.newVersion, false);
+  const live = service.publicRole("builders", 1);
+  assert.equal(live.role.steps[0].title, "Notice one campus friction");
+  assert.equal(live.role.steps[0].section, "Find");
+
+  await service.activate({ uid: "ada", roleId: "builders", excluded: false, opId: op() });
+  const step = live.role.steps[0];
+  await service.saveNotes({
+    uid: "ada",
+    roleId: "builders",
+    version: 1,
+    stepId: step.id,
+    text: "private-bus-note",
+    evidence: "",
+    expectedRevision: 0,
+    opId: op(),
+  });
+  const board = await service.learnerBoard();
+  assert.equal(board.learners.length, 1);
+  assert.equal(board.learners[0].state, "on-step");
+  assert.equal(board.learners[0].done, 0);
+  assert.equal(board.learners[0].currentStep, "Notice one campus friction");
+  assert.equal(JSON.stringify(board).includes("private-bus-note"), false);
+
+  const extra = structuredClone(role);
+  extra.steps.push({
+    ...extra.steps[9],
+    id: "builders-extra-step",
+    order: 11,
+    title: "Show one screen to a classmate",
+  });
+  const next = await service.publish("builders", extra, true);
+  assert.equal(next.version, 2);
+  assert.equal(next.steps, 11);
+  assert.equal(service.publicRole("builders", 1).role.steps.length, 10);
+  assert.equal(service.publicRole("builders").role.version, 2);
+  assert.equal(service.role("builders", 1).steps[0].title, "Notice one campus friction");
 });

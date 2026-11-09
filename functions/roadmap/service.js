@@ -1,6 +1,6 @@
 "use strict";
 
-const { indexCatalog } = require("./validate");
+const { AVATARS, indexCatalog, validateContent } = require("./validate");
 
 class RoadmapError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -70,6 +70,72 @@ function keyCounts(roleId, version) {
 }
 function trailKey(roleId, version) {
   return `${roleId}:v${version}`;
+}
+
+function cleanRole(input, roleId) {
+  if (!input || typeof input !== "object") {
+    throw new RoadmapError(400, "content_invalid", "This trail is missing.");
+  }
+  if (input.id !== roleId || !AVATARS[roleId]) {
+    throw new RoadmapError(400, "role_unknown", "That trail does not exist.");
+  }
+  const stepsIn = Array.isArray(input.steps) ? input.steps : [];
+  if (stepsIn.length < 1 || stepsIn.length > 15) {
+    throw new RoadmapError(400, "content_invalid", "A trail needs 1 to 15 steps.");
+  }
+  const steps = stepsIn.map((step, index) => {
+    const resource = step?.primaryResource || {};
+    const links = (Array.isArray(step?.links) ? step.links : []).slice(0, 2);
+    return {
+      id: String(step?.id || `${roleId}-step-${index + 1}`).trim(),
+      role: roleId,
+      version: Number(input.version) || 1,
+      order: index + 1,
+      type: String(step?.type || "task").trim() || "task",
+      section: String(step?.section || "Trail").trim().slice(0, 24) || "Trail",
+      title: String(step?.title || "").trim(),
+      goal: String(step?.goal || "").trim(),
+      estimateMinutes: Number(step?.estimateMinutes),
+      task: String(step?.task || "").trim(),
+      requiredOutput: String(step?.requiredOutput || "").trim(),
+      doneChecklist: (Array.isArray(step?.doneChecklist) ? step.doneChecklist : [])
+        .map((item) => String(item || "").trim())
+        .filter(Boolean)
+        .slice(0, 6),
+      primaryResource: {
+        id: String(resource.id || `${roleId}-resource-${index + 1}`).trim(),
+        publisher: String(resource.publisher || "").trim(),
+        title: String(resource.title || "").trim(),
+        url: String(resource.url || "").trim(),
+        slice: String(resource.slice || "").trim(),
+        accessNote:
+          String(resource.accessNote || "").trim() ||
+          "Public page. No sign-in. If it asks you to pay or create an account, use the task instead.",
+        checkedDate: "2026-11-09",
+        checkMethod: "Admin publish",
+      },
+      links: links
+        .map((link) => ({
+          kind: link?.kind === "video" ? "video" : "article",
+          publisher: String(link?.publisher || "").trim(),
+          title: String(link?.title || "").trim(),
+          url: String(link?.url || "").trim(),
+          slice: String(link?.slice || "").trim(),
+        }))
+        .filter((link) => link.url || link.title),
+      completion: "Self-attested checklist. This is your own record, not a graded pass.",
+      fallback:
+        String(step?.fallback || "").trim() || "If the link does not open, the task in this step is enough.",
+    };
+  });
+  return {
+    id: roleId,
+    title: String(input.title || "").trim(),
+    avatar: AVATARS[roleId],
+    version: Number(input.version) || 1,
+    description: String(input.description || "").trim(),
+    steps,
+  };
 }
 
 function blankCounts(role, now) {
@@ -219,11 +285,15 @@ function allChecked(checks) {
 }
 
 class RoadmapService {
-  constructor({ store, catalog, now = () => new Date().toISOString() }) {
+  constructor({ store, catalog, raw = null, now = () => new Date().toISOString() }) {
     if (!store) throw new Error("store required");
     if (!catalog) throw new Error("catalog required");
     this.store = store;
     this.catalog = catalog;
+    this.raw = raw;
+    this.published = {};
+    this.drafts = {};
+    this._hydratedAt = 0;
     this.byRole = indexCatalog(catalog);
     this.now = now;
   }
@@ -936,6 +1006,198 @@ class RoadmapService {
       written.push(trailKey(row.role.id, row.role.version));
     }
     return written;
+  }
+
+  async hydrate() {
+    if (!this.raw) return;
+    if (this._hydratedAt && Date.now() - this._hydratedAt < 15000) return;
+    const published = await this.store.transaction((tx) => tx.get("a:published"));
+    const drafts = await this.store.transaction((tx) => tx.get("a:drafts"));
+    this.published = published?.roles && typeof published.roles === "object" ? published.roles : {};
+    this.drafts = drafts?.roles && typeof drafts.roles === "object" ? drafts.roles : {};
+    if (Object.keys(this.published).length) {
+      try {
+        this._reindex();
+      } catch (err) {
+        console.error("published roadmap overlay rejected");
+        this.published = {};
+      }
+    }
+    this._hydratedAt = Date.now();
+  }
+
+  _composeRaw(extraRole) {
+    const raw = structuredClone(this.raw);
+    for (const role of Object.values(this.published || {})) this._upsertRaw(raw, role);
+    if (extraRole) this._upsertRaw(raw, extraRole);
+    return raw;
+  }
+
+  _upsertRaw(raw, role) {
+    const index = raw.roles.findIndex(
+      (item) => item && item.id === role.id && Number(item.version) === Number(role.version)
+    );
+    if (index >= 0) raw.roles[index] = role;
+    else raw.roles.push(role);
+  }
+
+  _reindex() {
+    const result = validateContent(this._composeRaw());
+    if (!result.ok) {
+      const error = new Error(result.errors[0] || "Published trail is invalid");
+      error.errors = result.errors;
+      throw error;
+    }
+    this.catalog = result.catalog;
+    this.byRole = indexCatalog(result.catalog);
+  }
+
+  _validateRole(role) {
+    if (!this.raw) {
+      throw new RoadmapError(400, "authoring_unavailable", "Editing is not available on this server.");
+    }
+    const result = validateContent(this._composeRaw(role));
+    if (!result.ok) {
+      throw new RoadmapError(400, "content_invalid", result.errors[0] || "This trail needs a fix before it can be saved.", {
+        errors: result.errors.slice(0, 8),
+      });
+    }
+  }
+
+  editorFor(roleId) {
+    if (!this.raw) {
+      throw new RoadmapError(400, "authoring_unavailable", "Editing is not available on this server.");
+    }
+    if (!AVATARS[roleId]) throw new RoadmapError(404, "role_unknown", "That trail does not exist.");
+    const raw = this._composeRaw();
+    const versions = raw.roles.filter((item) => item.id === roleId);
+    const latest = versions.slice().sort((a, b) => Number(b.version) - Number(a.version))[0];
+    if (!latest) throw new RoadmapError(404, "role_unknown", "That trail does not exist.");
+    const draft = this.drafts?.[roleId] || null;
+    return {
+      ok: true,
+      role: draft || latest,
+      baseStepIds: latest.steps.map((step) => step.id),
+      hasDraft: Boolean(draft),
+      version: Number(latest.version),
+      noteAccess: "Content admin cannot read student notes, evidence, or private progress.",
+    };
+  }
+
+  async saveDraft(roleId, input) {
+    await this.hydrate();
+    const role = cleanRole(input, roleId);
+    this._validateRole(role);
+    this.drafts = { ...(this.drafts || {}), [roleId]: role };
+    await this._saveAuthoring();
+    return { ok: true, saved: "draft", role };
+  }
+
+  async publish(roleId, input, asNewVersion) {
+    await this.hydrate();
+    const role = cleanRole(input, roleId);
+    const latest = this.role(roleId);
+    const ids = role.steps.map((step) => step.id);
+    const same =
+      ids.length === latest.steps.length && ids.every((id, index) => id === latest.steps[index].id);
+    let next = role;
+    if (!same) {
+      if (!asNewVersion) {
+        throw new RoadmapError(
+          400,
+          "version_required",
+          "Step order changed. Publish it as a new version so current students keep their trail."
+        );
+      }
+      const version = latest.version + 1;
+      next = {
+        ...role,
+        version,
+        steps: role.steps.map((step, index) => ({
+          ...step,
+          id: `${roleId}-v${version}-${String(index + 1).padStart(2, "0")}`,
+          role: roleId,
+          version,
+          order: index + 1,
+        })),
+      };
+    } else {
+      next = {
+        ...role,
+        version: latest.version,
+        steps: role.steps.map((step, index) => ({
+          ...step,
+          id: latest.steps[index].id,
+          role: roleId,
+          version: latest.version,
+          order: index + 1,
+        })),
+      };
+    }
+    this._validateRole(next);
+    this.published = { ...(this.published || {}), [`${next.id}:v${next.version}`]: next };
+    delete this.drafts[roleId];
+    this._reindex();
+    await this._saveAuthoring();
+    this._hydratedAt = Date.now();
+    return {
+      ok: true,
+      saved: "published",
+      roleId: next.id,
+      version: next.version,
+      steps: next.steps.length,
+      newVersion: !same,
+    };
+  }
+
+  async _saveAuthoring() {
+    await this.store.transaction(async (tx) => {
+      tx.set("a:published", { kind: "authoring", roles: this.published || {} });
+      tx.set("a:drafts", { kind: "authoring", roles: this.drafts || {} });
+    });
+  }
+
+  async learnerBoard() {
+    const enrolments = await this.store.listEnrolments();
+    const learners = [];
+    for (const enrolment of enrolments.slice(0, 200)) {
+      const row = {
+        uid: enrolment.uid,
+        excluded: Boolean(enrolment.excluded),
+        updatedAt: enrolment.updatedAt || null,
+        state: enrolment.activeRoleId ? "not-started" : "not-started",
+        roleId: enrolment.activeRoleId || null,
+        roleTitle: "",
+        version: enrolment.activeVersion || null,
+        done: 0,
+        total: 0,
+        currentStep: null,
+      };
+      if (!enrolment.activeRoleId || !enrolment.activeAttemptNo) {
+        learners.push(row);
+        continue;
+      }
+      try {
+        const role = this.role(enrolment.activeRoleId, enrolment.activeVersion);
+        const attempt = await this.store.transaction((tx) =>
+          tx.get(keyAttempt(enrolment.uid, role.id, role.version, enrolment.activeAttemptNo))
+        );
+        const progress = progressOf(role.steps, attempt?.completed);
+        row.roleTitle = role.title;
+        row.total = progress.total;
+        row.done = progress.done;
+        row.state = progress.finished ? "finished" : "on-step";
+        row.currentStep = progress.finished ? null : progress.nextTitle;
+      } catch (_err) {
+        row.state = "unknown-trail";
+      }
+      learners.push(row);
+    }
+    return {
+      ok: true,
+      learners,
+      noteAccess: "Progress only. Notes and evidence stay private.",
+    };
   }
 
   async _attemptFor(tx, enrolment, role, preloaded) {
